@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Placeholder adaptable icon until user supplies custom .svg -->
+    <path
+        android:fillColor="#A8C7FA"
+        android:pathData="M54,24A30,30 0,1 1,53.99 24Z"
+        android:strokeWidth="0" />
+    <path
+        android:fillColor="#10131A"
+        android:pathData="M54,30A24,24 0,1 0,78 54A24,24 0,0 0,54 30Z" />
+    <path
+        android:fillColor="#D3E3FD"
+        android:pathData="M52,38L56,38L56,54L67,60.5L65,64L52,56.5Z" />
+</vector>

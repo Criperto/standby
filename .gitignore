@@ -1,0 +1,31 @@
+# Isolated build toolchain & local caches
+.toolchain/
+dist/*.apk
+
+# Rust
+rust/target/
+**/target/
+**/*.rs.bk
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/jniLibs/
+android/app/src/main/java/uniffi/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+.gradle/
+build/
+captures/
+
+# IDE & OS
+*.iml
+.idea/
+.DS_Store
+*.swp
+*~
