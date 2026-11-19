@@ -112,4 +112,77 @@ class SmartHomePhase3Test {
         assertEquals(100, lastValue.get())
         assertNotNull(throttler)
     }
+
+    @Test
+    fun homeAssistantStatesParserHandlesLightAcTvAndSwitch() {
+        val sampleHaJson = """
+            [
+              {
+                "entity_id": "light.tira_escritorio",
+                "state": "on",
+                "attributes": {
+                  "friendly_name": "Tira LED Escritorio",
+                  "brightness": 204,
+                  "rgb_color": [64, 224, 208]
+                }
+              },
+              {
+                "entity_id": "climate.aire_living",
+                "state": "cool",
+                "attributes": {
+                  "friendly_name": "Aire Living",
+                  "temperature": 23,
+                  "current_temperature": 26.5,
+                  "hvac_mode": "cool"
+                }
+              },
+              {
+                "entity_id": "media_player.smart_tv_lg",
+                "state": "playing",
+                "attributes": {
+                  "friendly_name": "Smart TV LG",
+                  "volume_level": 0.45,
+                  "is_volume_muted": false,
+                  "source": "YouTube"
+                }
+              },
+              {
+                "entity_id": "switch.cafetera",
+                "state": "off",
+                "attributes": {
+                  "friendly_name": "Cafetera"
+                }
+              }
+            ]
+        """.trimIndent()
+
+        val parsed = com.criperto.standby.smarthome.MultiBrandDrivers.parseHomeAssistantStatesJson(
+            rawJsonArray = sampleHaJson,
+            serverUrl = "http://192.168.100.50:8123",
+        )
+        assertEquals(4, parsed.size)
+
+        val (lightCfg, lightSt) = parsed.first { it.first.entityId == "light.tira_escritorio" }
+        assertEquals("light", lightCfg.category)
+        assertEquals("home_assistant", lightCfg.driver)
+        assertTrue(lightSt.isOn)
+        assertEquals(80, lightSt.brightness)
+        assertEquals(64, lightSt.r)
+
+        val (acCfg, acSt) = parsed.first { it.first.entityId == "climate.aire_living" }
+        assertEquals("ac", acCfg.category)
+        assertTrue(acSt.isOn)
+        assertEquals(23, acSt.targetTempC)
+        assertEquals("cool", acSt.hvacMode)
+
+        val (tvCfg, tvSt) = parsed.first { it.first.entityId == "media_player.smart_tv_lg" }
+        assertEquals("tv", tvCfg.category)
+        assertTrue(tvSt.isOn)
+        assertEquals(45, tvSt.volumePct)
+        assertEquals("YouTube", tvSt.tvSource)
+
+        val (swCfg, swSt) = parsed.first { it.first.entityId == "switch.cafetera" }
+        assertEquals("switch", swCfg.category)
+        assertEquals(false, swSt.isOn)
+    }
 }

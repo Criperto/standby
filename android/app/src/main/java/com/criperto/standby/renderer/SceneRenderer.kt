@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -624,7 +625,7 @@ private fun RenderObjectNode(
                                         act, obj, signals, sw, sh, stateValues, scopeAncestors,
                                         palette, allObjects, onWizAction, "onTap"
                                     )
-                                } else if (obj.objType == "wiz_button" || obj.objType == "wiz_device") {
+                                } else if (obj.objType == "wiz_button" || obj.objType == "wiz_device" || obj.objType == "smart_device") {
                                     onWizAction(obj.wizAction ?: "toggle", obj.wizDeviceId ?: "primary", obj.wizSceneId?.toString())
                                 } else if (obj.objType.startsWith("media_")) {
                                     val cmd = when (obj.objType) {
@@ -766,12 +767,15 @@ private fun RenderObjectNode(
                     }
                 }
             }
-            "wiz_button", "wiz_device" -> {
+            "wiz_button", "wiz_device", "smart_device" -> {
                 RenderWizButtonWidget(
                     obj = obj,
                     signals = signals,
+                    palette = palette,
+                    assetCache = assetCache,
+                    vScale = vScale,
                     textColor = fillColor,
-                    accentColor = Color(resolvePaletteTokenInt("primary", palette)),
+                    strokeColor = Color(strokeArgb),
                     wb = wb,
                     interactive = interactive,
                     onWizAction = onWizAction,
@@ -1371,30 +1375,85 @@ private fun RenderMediaCardWidget(signals: DeviceSignals, textColor: Color, acce
 private fun RenderWizButtonWidget(
     obj: SceneObject,
     signals: DeviceSignals,
+    palette: MaterialYouPaletteDto,
+    assetCache: SceneAssetCache,
+    vScale: Float,
     textColor: Color,
-    accentColor: Color,
+    strokeColor: Color,
     wb: ComputedWorldBox,
     interactive: Boolean,
     onWizAction: (String, String, String?) -> Unit,
 ) {
     val density = LocalDensity.current
     val w = signals.wizStatus
-    val lampColor = remember(w.hex, accentColor) {
-        runCatching { Color(parseHexColorInt(w.hex)) }.getOrDefault(accentColor)
+
+    val typeface = remember(obj.customFontFamily, obj.fontFileName, obj.fontSourceId, obj.fontWeight, obj.fontItalic) {
+        assetCache.resolveTypeface(obj)
     }
-    val baseBg = Color(0xFF283A54)
-    val fillTint = if (w.isOn) {
-        androidx.compose.ui.graphics.lerp(Color(0xFF96877A), lampColor, 0.35f)
+    val fontFamily = remember(typeface) { FontFamily(typeface) }
+    val fontWeight = FontWeight(obj.fontWeight.coerceIn(100, 900))
+    val fontStyle = if (obj.fontItalic) FontStyle.Italic else FontStyle.Normal
+    val letterSp = with(density) { (obj.letterSpacing.toFloat() * vScale).toSp() }
+
+    val primaryColor = Color(resolvePaletteTokenInt("primary", palette))
+    val lampColor = remember(w.hex, primaryColor) {
+        runCatching { Color(parseHexColorInt(w.hex)) }.getOrDefault(primaryColor)
+    }
+
+    val bgArgb = if (obj.wizIsCustomBgColor) {
+        parseHexColorInt(obj.wizCustomBgHex)
     } else {
-        Color(0xFF33445E)
+        resolvePaletteTokenInt(obj.wizBgColorChoice, palette)
     }
+    val baseBg = Color(bgArgb).copy(alpha = (Color(bgArgb).alpha * obj.wizBgAlpha.toFloat()).coerceIn(0f, 1f))
+
+    val barArgb = if (obj.wizIsCustomBarColor) {
+        parseHexColorInt(obj.wizCustomBarHex)
+    } else {
+        resolvePaletteTokenInt(obj.wizBarColorChoice, palette)
+    }
+    val rawBarColor = Color(barArgb).copy(alpha = (Color(barArgb).alpha * obj.wizBarAlpha.toFloat()).coerceIn(0f, 1f))
+    val fillTint = if (w.isOn) {
+        if (obj.wizUseLampColor) {
+            androidx.compose.ui.graphics.lerp(rawBarColor, lampColor, 0.38f)
+        } else {
+            rawBarColor
+        }
+    } else {
+        baseBg
+    }
+
+    val accArgb = if (obj.wizIsCustomAccentColor) {
+        parseHexColorInt(obj.wizCustomAccentHex)
+    } else {
+        resolvePaletteTokenInt(obj.wizAccentColorChoice, palette)
+    }
+    val pctColor = if (w.isOn) Color(accArgb) else textColor.copy(alpha = 0.55f)
+
     val fillFrac = if (w.isOn) (w.dimming.coerceIn(10, 100) / 100f) else 0f
-    val cornerDp = with(density) { (wb.height * 0.26f).coerceIn(10f, 28f).toDp() }
-    val titleSp = with(density) { (wb.height * 0.24f).coerceIn(10f, 22f).toSp() }
-    val subSp = with(density) { (wb.height * 0.19f).coerceIn(8f, 17f).toSp() }
-    val pctSp = with(density) { (wb.height * 0.25f).coerceIn(10f, 23f).toSp() }
-    val padH = with(density) { (wb.width * 0.055f).coerceIn(6f, 20f).toDp() }
-    val padV = with(density) { (wb.height * 0.14f).coerceIn(4f, 16f).toDp() }
+    val cornerPx = (obj.radiusUniform.toFloat() * vScale).coerceIn(0f, wb.height * 0.5f)
+    val cornerDp = with(density) { cornerPx.toDp() }
+
+    val scaledTitlePx = (obj.baseFontSize.toFloat() * vScale * wb.scaleY)
+        .coerceIn(9f, (wb.height * 0.44f).coerceAtLeast(12f))
+    val titleSp = with(density) { scaledTitlePx.toSp() }
+    val subSp = with(density) { (scaledTitlePx * 0.78f).coerceIn(8f, (wb.height * 0.34f).coerceAtLeast(10f)).toSp() }
+    val pctSp = with(density) { (scaledTitlePx * 1.04f).coerceIn(10f, (wb.height * 0.46f).coerceAtLeast(12f)).toSp() }
+    val padH = with(density) { (wb.width * 0.055f).coerceIn(6f, 22f).toDp() }
+    val padV = with(density) { (wb.height * 0.13f).coerceIn(4f, 16f).toDp() }
+    val iconDp = with(density) { (wb.height * 0.32f).coerceIn(14f, 32f).toDp() }
+
+    fun expandTemplate(tpl: String): String {
+        return tpl
+            .replace("\$WIZ_NAME", w.name.ifBlank { "WiZ dc5a" })
+            .replace("\$WIZ_ROOM", "Escritorio")
+            .replace("\$WIZ_DIM", "${w.dimming}%")
+            .replace("\$WIZ_ON", if (w.isOn) "ON" else "OFF")
+            .replace("\$BATTERY", "${signals.batteryLevel}")
+    }
+
+    val resolvedTitle = expandTemplate(obj.wizTitleTemplate.ifBlank { "\$WIZ_NAME" })
+    val resolvedSubtitle = expandTemplate(obj.wizSubtitleTemplate)
 
     Box(
         modifier = Modifier
@@ -1404,7 +1463,7 @@ private fun RenderWizButtonWidget(
             .then(
                 if (interactive) {
                     Modifier
-                        .pointerInput(obj.id, obj.wizAction, obj.wizDeviceId) {
+                        .pointerInput(obj.id, obj.wizAction, obj.wizDeviceId, obj.wizSceneId) {
                             detectTapGestures(
                                 onTap = {
                                     onWizAction(
@@ -1427,52 +1486,205 @@ private fun RenderWizButtonWidget(
             ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            if (fillFrac > 0.01f) {
+            if (fillFrac > 0.01f && obj.wizStyle != "minimal") {
                 drawRect(
                     color = fillTint,
                     topLeft = Offset.Zero,
                     size = androidx.compose.ui.geometry.Size(size.width * fillFrac, size.height),
                 )
             }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = padH, vertical = padV),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f).padding(end = 6.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = w.name.ifBlank { "WiZ dc5a" },
-                    color = Color.White,
-                    fontSize = titleSp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "Escritorio",
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = subSp,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
+            if (obj.strokeEnabled && obj.strokeWidth > 0.1) {
+                val sw = (obj.strokeWidth.toFloat() * vScale).coerceAtLeast(1f)
+                drawRoundRect(
+                    color = strokeColor,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
+                    style = Stroke(width = sw),
                 )
             }
-            Text(
-                text = if (w.isOn) "%${w.dimming}" else "OFF",
-                color = if (w.isOn) Color(0xFF5CA8FF) else Color.White.copy(alpha = 0.55f),
-                fontSize = pctSp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                softWrap = false,
-            )
+        }
+
+        when (obj.wizStyle) {
+            "tile" -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = padH, vertical = padV),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (obj.wizShowIcon) {
+                            Icon(
+                                imageVector = materialIconByName(obj.iconName),
+                                contentDescription = null,
+                                tint = pctColor,
+                                modifier = Modifier.size(iconDp),
+                            )
+                        }
+                        if (obj.wizShowPercent) {
+                            Text(
+                                text = if (w.isOn) "%${w.dimming}" else "OFF",
+                                color = pctColor,
+                                fontSize = pctSp,
+                                fontFamily = fontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontStyle = fontStyle,
+                                letterSpacing = letterSp,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = resolvedTitle,
+                            color = textColor,
+                            fontSize = titleSp,
+                            fontFamily = fontFamily,
+                            fontWeight = fontWeight,
+                            fontStyle = fontStyle,
+                            letterSpacing = letterSp,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (resolvedSubtitle.isNotBlank()) {
+                            Text(
+                                text = resolvedSubtitle,
+                                color = textColor.copy(alpha = 0.82f),
+                                fontSize = subSp,
+                                fontFamily = fontFamily,
+                                fontWeight = FontWeight.Normal,
+                                fontStyle = fontStyle,
+                                letterSpacing = letterSp,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+            "compact", "minimal" -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = padH),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (obj.wizShowIcon) {
+                            Icon(
+                                imageVector = materialIconByName(obj.iconName),
+                                contentDescription = null,
+                                tint = pctColor,
+                                modifier = Modifier.size(iconDp),
+                            )
+                        }
+                        Text(
+                            text = resolvedTitle,
+                            color = textColor,
+                            fontSize = titleSp,
+                            fontFamily = fontFamily,
+                            fontWeight = fontWeight,
+                            fontStyle = fontStyle,
+                            letterSpacing = letterSp,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (obj.wizShowPercent) {
+                        Text(
+                            text = if (w.isOn) "%${w.dimming}" else "OFF",
+                            color = pctColor,
+                            fontSize = pctSp,
+                            fontFamily = fontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontStyle = fontStyle,
+                            letterSpacing = letterSp,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
+            else -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = padH, vertical = padV),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (obj.wizShowIcon) {
+                            Icon(
+                                imageVector = materialIconByName(obj.iconName),
+                                contentDescription = null,
+                                tint = pctColor,
+                                modifier = Modifier.size(iconDp),
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = resolvedTitle,
+                                color = textColor,
+                                fontSize = titleSp,
+                                fontFamily = fontFamily,
+                                fontWeight = fontWeight,
+                                fontStyle = fontStyle,
+                                letterSpacing = letterSp,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (resolvedSubtitle.isNotBlank()) {
+                                Text(
+                                    text = resolvedSubtitle,
+                                    color = textColor.copy(alpha = 0.84f),
+                                    fontSize = subSp,
+                                    fontFamily = fontFamily,
+                                    fontWeight = FontWeight.Normal,
+                                    fontStyle = fontStyle,
+                                    letterSpacing = letterSp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                    if (obj.wizShowPercent) {
+                        Text(
+                            text = if (w.isOn) "%${w.dimming}" else "OFF",
+                            color = pctColor,
+                            fontSize = pctSp,
+                            fontFamily = fontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontStyle = fontStyle,
+                            letterSpacing = letterSp,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
         }
     }
 }

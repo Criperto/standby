@@ -572,6 +572,50 @@ fun SettingsScreen(
             }
         }
 
+        item {
+            SettingsSectionCard(
+                title = "Acerca de StandBy",
+                icon = Icons.Rounded.Layers,
+            ) {
+                Text(
+                    text = "StandBy — Android Desktop Clock & Local Smart Home Hub (Rust + Jetpack Compose M3)",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = "Autor: Criperto · Versión 0.3.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Criperto/standby"))
+                                )
+                            }
+                        },
+                    ) {
+                        Text("GitHub Repo (Criperto/standby)")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Criperto"))
+                                )
+                            }
+                        },
+                    ) {
+                        Text("Perfil @Criperto")
+                    }
+                }
+            }
+        }
+
         item { Spacer(Modifier.height(24.dp)) }
     }
 }

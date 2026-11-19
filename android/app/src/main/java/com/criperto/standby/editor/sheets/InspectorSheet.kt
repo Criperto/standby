@@ -134,7 +134,7 @@ fun InspectorSheet(
                         TransformSection(primary, uiState, viewModel)
                     }
                     InspectorSection.STYLE -> if (primary != null) {
-                        StyleSection(primary, viewModel)
+                        StyleSection(primary, app, viewModel)
                     }
                     InspectorSection.TEXT -> if (primary != null) {
                         TextSection(
@@ -364,6 +364,7 @@ private fun TransformSection(
 @Composable
 private fun StyleSection(
     obj: SceneObject,
+    app: StandByApplication,
     viewModel: EditorViewModel,
 ) {
     Text(
@@ -551,6 +552,204 @@ private fun StyleSection(
                     viewModel.updateObjectDebounced(obj.id) { it.copy(circleRatio = cr.toDouble()) }
                 },
             )
+        }
+    }
+
+    if (obj.objType == "wiz_button" || obj.objType == "wiz_device" || obj.objType == "smart_device") {
+        val smartUi by app.smartHomeController.uiState.collectAsState()
+        HorizontalDivider()
+        Text(
+            "Personalización Total Botón Smart Home",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text("Diseño visual", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                "pill_slider" to "Barra Google Home",
+                "tile" to "Tarjeta HomeKit",
+                "compact" to "Compacto",
+                "minimal" to "Minimalista",
+            ).forEach { (st, label) ->
+                FilterChip(
+                    selected = obj.wizStyle == st,
+                    onClick = { viewModel.updateObjectImmediate(obj.id) { it.copy(wizStyle = st) } },
+                    label = { Text(label) },
+                )
+            }
+        }
+        InspectorSlider(
+            label = "Radio esquinas: ${obj.radiusUniform.roundToInt()} px",
+            value = obj.radiusUniform.toFloat(),
+            range = 0f..120f,
+            onChange = { r -> viewModel.updateObjectDebounced(obj.id) { it.copy(radiusUniform = r.toDouble()) } },
+        )
+
+        Text("Dispositivo y Acción", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val deviceChoices = buildList {
+                add("primary" to "Principal")
+                add("all" to "Todos")
+                smartUi.devices.forEach { d -> add(d.id to d.name) }
+            }
+            deviceChoices.forEach { (devId, label) ->
+                FilterChip(
+                    selected = (obj.wizDeviceId ?: "primary") == devId,
+                    onClick = { viewModel.updateObjectImmediate(obj.id) { it.copy(wizDeviceId = devId) } },
+                    label = { Text(label) },
+                )
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                "toggle" to "Alternar ON/OFF",
+                "on" to "Encender",
+                "off" to "Apagar",
+                "scene" to "Escena Luz Diurna",
+            ).forEach { (act, label) ->
+                FilterChip(
+                    selected = (obj.wizAction ?: "toggle") == act,
+                    onClick = {
+                        viewModel.updateObjectImmediate(obj.id) {
+                            it.copy(
+                                wizAction = act,
+                                wizSceneId = if (act == "scene" && it.wizSceneId == null) 12 else it.wizSceneId,
+                            )
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+
+        Text("Color Fondo Tarjeta (Material You / Hex)", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            paletteChoices.forEach { (token, label) ->
+                FilterChip(
+                    selected = !obj.wizIsCustomBgColor && obj.wizBgColorChoice == token,
+                    onClick = {
+                        viewModel.updateObjectImmediate(obj.id) {
+                            it.copy(wizIsCustomBgColor = false, wizBgColorChoice = token)
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+        var bgHexBuf by remember(obj.id, obj.wizCustomBgHex) { mutableStateOf(obj.wizCustomBgHex) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = bgHexBuf,
+                onValueChange = { bgHexBuf = it },
+                label = { Text("Hex Fondo (#RRGGBB)") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = {
+                    viewModel.updateObjectImmediate(obj.id) {
+                        it.copy(wizIsCustomBgColor = true, wizCustomBgHex = bgHexBuf.trim())
+                    }
+                },
+            ) { Text("Aplicar") }
+        }
+        InspectorSlider(
+            label = "Opacidad Fondo: ${(obj.wizBgAlpha * 100).roundToInt()}%",
+            value = obj.wizBgAlpha.toFloat(),
+            range = 0f..1f,
+            onChange = { a -> viewModel.updateObjectDebounced(obj.id) { it.copy(wizBgAlpha = a.toDouble()) } },
+        )
+
+        Text("Color Barra Activa (Material You / Hex)", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            paletteChoices.forEach { (token, label) ->
+                FilterChip(
+                    selected = !obj.wizIsCustomBarColor && obj.wizBarColorChoice == token,
+                    onClick = {
+                        viewModel.updateObjectImmediate(obj.id) {
+                            it.copy(wizIsCustomBarColor = false, wizBarColorChoice = token)
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+        var barHexBuf by remember(obj.id, obj.wizCustomBarHex) { mutableStateOf(obj.wizCustomBarHex) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = barHexBuf,
+                onValueChange = { barHexBuf = it },
+                label = { Text("Hex Barra (#RRGGBB)") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = {
+                    viewModel.updateObjectImmediate(obj.id) {
+                        it.copy(wizIsCustomBarColor = true, wizCustomBarHex = barHexBuf.trim())
+                    }
+                },
+            ) { Text("Aplicar") }
+        }
+        InspectorSlider(
+            label = "Opacidad Barra Activa: ${(obj.wizBarAlpha * 100).roundToInt()}%",
+            value = obj.wizBarAlpha.toFloat(),
+            range = 0f..1f,
+            onChange = { a -> viewModel.updateObjectDebounced(obj.id) { it.copy(wizBarAlpha = a.toDouble()) } },
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Teñir barra con color vivo de la lámpara")
+            Switch(
+                checked = obj.wizUseLampColor,
+                onCheckedChange = { en ->
+                    viewModel.updateObjectImmediate(obj.id) { it.copy(wizUseLampColor = en) }
+                },
+            )
+        }
+
+        Text("Color Porcentaje / Acento (Material You / Hex)", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            paletteChoices.forEach { (token, label) ->
+                FilterChip(
+                    selected = !obj.wizIsCustomAccentColor && obj.wizAccentColorChoice == token,
+                    onClick = {
+                        viewModel.updateObjectImmediate(obj.id) {
+                            it.copy(wizIsCustomAccentColor = false, wizAccentColorChoice = token)
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+        var accHexBuf by remember(obj.id, obj.wizCustomAccentHex) { mutableStateOf(obj.wizCustomAccentHex) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = accHexBuf,
+                onValueChange = { accHexBuf = it },
+                label = { Text("Hex Acento (#RRGGBB)") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = {
+                    viewModel.updateObjectImmediate(obj.id) {
+                        it.copy(wizIsCustomAccentColor = true, wizCustomAccentHex = accHexBuf.trim())
+                    }
+                },
+            ) { Text("Aplicar") }
         }
     }
 
@@ -743,6 +942,64 @@ private fun TextSection(
                 } else {
                     "SVG: ${obj.svgSource} (Cambiar...)"
                 }
+            )
+        }
+    }
+
+    if (obj.objType == "wiz_button" || obj.objType == "wiz_device" || obj.objType == "smart_device") {
+        HorizontalDivider()
+        Text(
+            "Textos e Iconos del Botón Smart Home",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        var titleBuf by remember(obj.id, obj.wizTitleTemplate) { mutableStateOf(obj.wizTitleTemplate) }
+        var subBuf by remember(obj.id, obj.wizSubtitleTemplate) { mutableStateOf(obj.wizSubtitleTemplate) }
+
+        OutlinedTextField(
+            value = titleBuf,
+            onValueChange = {
+                titleBuf = it
+                viewModel.updateObjectDebounced(obj.id) { o -> o.copy(wizTitleTemplate = it) }
+            },
+            label = { Text("Título (\$WIZ_NAME, \$WIZ_ON, \$WIZ_DIM)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = subBuf,
+            onValueChange = {
+                subBuf = it
+                viewModel.updateObjectDebounced(obj.id) { o -> o.copy(wizSubtitleTemplate = it) }
+            },
+            label = { Text("Subtítulo (vacío para ocultar)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Mostrar % / OFF a la derecha")
+            Switch(
+                checked = obj.wizShowPercent,
+                onCheckedChange = { en ->
+                    viewModel.updateObjectImmediate(obj.id) { it.copy(wizShowPercent = en) }
+                },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Mostrar ícono del dispositivo")
+            Switch(
+                checked = obj.wizShowIcon,
+                onCheckedChange = { en ->
+                    viewModel.updateObjectImmediate(obj.id) { it.copy(wizShowIcon = en) }
+                },
             )
         }
     }

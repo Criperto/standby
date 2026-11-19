@@ -23,6 +23,18 @@ data class WizDeviceConfig(
     val supportsRgb: Boolean = true,
     val supportsTemp: Boolean = true,
     val isFavorite: Boolean = true,
+    // Multi-brand & Multi-category extensions (v0.3)
+    val driver: String = "wiz", // wiz | wled | shelly | tasmota | yeelight | hue | home_assistant
+    val category: String = "light", // light | ac | tv | switch | fan
+    val entityId: String = "", // Home Assistant entity_id (e.g. light.velador, climate.aire, media_player.tv)
+    val authToken: String = "",
+)
+
+@Serializable
+data class HomeAssistantConfig(
+    val enabled: Boolean = false,
+    val serverUrl: String = "",
+    val accessToken: String = "",
 )
 
 @Serializable
@@ -45,9 +57,18 @@ data class SmartHomeStore(
     val devices: List<WizDeviceConfig> = emptyList(),
     val favorites: List<SmartSceneFavorite> = defaultFavorites(),
     val rooms: List<String> = listOf("Escritorio", "Dormitorio", "Living"),
+    val homeAssistant: HomeAssistantConfig = HomeAssistantConfig(),
 ) {
     companion object {
         fun defaultFavorites(): List<SmartSceneFavorite> = listOf(
+            SmartSceneFavorite(
+                id = "fav_daylight",
+                name = "Luz diurna",
+                actionType = "scene",
+                sceneId = 12,
+                brightness = 100,
+                speed = 100,
+            ),
             SmartSceneFavorite(
                 id = "fav_warm",
                 name = "Lectura cálida",
@@ -64,25 +85,12 @@ data class SmartHomeStore(
                 speed = 80,
             ),
             SmartSceneFavorite(
-                id = "fav_cyber",
-                name = "Ciberpunk",
-                actionType = "scene",
-                sceneId = 30,
-                brightness = 90,
-                speed = 110,
-            ),
-            SmartSceneFavorite(
                 id = "fav_night",
                 name = "Luz nocturna",
                 actionType = "scene",
                 sceneId = 14,
                 brightness = 20,
                 speed = 50,
-            ),
-            SmartSceneFavorite(
-                id = "fav_all_off",
-                name = "Apagar todo",
-                actionType = "off",
             ),
         )
     }
@@ -123,7 +131,10 @@ class SmartHomeRepository(private val context: Context) {
     suspend fun upsertDevice(device: WizDeviceConfig) {
         update { store ->
             val idx = store.devices.indexOfFirst {
-                it.id == device.id || (device.mac.isNotBlank() && it.mac == device.mac) || it.ip == device.ip
+                it.id == device.id ||
+                    (device.entityId.isNotBlank() && it.entityId == device.entityId) ||
+                    (device.mac.isNotBlank() && it.mac == device.mac) ||
+                    (device.driver != "home_assistant" && it.ip == device.ip && it.driver == device.driver)
             }
             val nextList = if (idx >= 0) {
                 store.devices.toMutableList().apply { set(idx, device) }
@@ -137,6 +148,10 @@ class SmartHomeRepository(private val context: Context) {
             }
             store.copy(devices = nextList, rooms = nextRooms)
         }
+    }
+
+    suspend fun updateHomeAssistant(config: HomeAssistantConfig) {
+        update { store -> store.copy(homeAssistant = config) }
     }
 
     suspend fun removeDevice(deviceId: String) {

@@ -61,6 +61,7 @@ fun SmartHomeScreen(
     var sweepSubnet by remember { mutableStateOf(true) }
     var selectedRoom by remember { mutableStateOf<String?>(null) }
     var showAddIp by remember { mutableStateOf(false) }
+    var showHaDialog by remember { mutableStateOf(false) }
     var editingDeviceId by remember { mutableStateOf<String?>(null) }
     var renamingDevice by remember { mutableStateOf<WizDeviceConfig?>(null) }
 
@@ -92,9 +93,9 @@ fun SmartHomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Hogar Local (WiZ UDP)", style = MaterialTheme.typography.titleLarge)
+                            Text("Hogar Inteligente (Multi-Marca & HA)", style = MaterialTheme.typography.titleLarge)
                             Text(
-                                "Control directo LAN por puerto 38899, sin servidor ni nube.",
+                                "Control local WiZ, WLED, Shelly, Tasmota, Yeelight y servidor Home Assistant (luces, A/C, Smart TV, enchufes).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -127,12 +128,23 @@ fun SmartHomeScreen(
                         ) {
                             Icon(Icons.Rounded.Search, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
-                            Text("Buscar lámparas WiZ")
+                            Text("Escanear Hogar LAN")
                         }
                         OutlinedButton(onClick = { showAddIp = true }) {
                             Icon(Icons.Rounded.Add, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
-                            Text("Añadir IP")
+                            Text("Añadir dispositivo")
+                        }
+                        OutlinedButton(onClick = { showHaDialog = true }) {
+                            Text(
+                                if (ui.homeAssistant.enabled) {
+                                    "Home Assistant: Conectado"
+                                } else if (ui.detectedHaUrl != null) {
+                                    "Conectar Home Assistant (Detectado)"
+                                } else {
+                                    "Home Assistant..."
+                                }
+                            )
                         }
                     }
 
@@ -236,9 +248,10 @@ fun SmartHomeScreen(
             }
         } else {
             items(filteredDevices, key = { it.id }) { dev ->
+                val st = ui.statesByDeviceId[dev.id] ?: SmartDeviceStateDto()
                 WizDeviceCard(
                     device = dev,
-                    state = ui.statesByDeviceId[dev.id] ?: SmartDeviceStateDto(),
+                    state = st,
                     reachable = ui.reachableByDeviceId[dev.id] ?: true,
                     scenes = ui.scenes,
                     onTogglePower = { controller.setPower(dev.id, it) },
@@ -246,6 +259,9 @@ fun SmartHomeScreen(
                     onOpenControls = { editingDeviceId = dev.id },
                     onRenameRequest = { renamingDevice = dev },
                     onDeleteRequest = { controller.deleteDevice(dev.id) },
+                    onAcControl = { temp, mode -> controller.setAcTemperature(dev.id, temp, mode) },
+                    onTvMuteToggle = { controller.setTvVolume(dev.id, st.volumePct ?: st.brightness, toggleMute = true) },
+                    onTvPlayPause = { controller.triggerTvMediaPlayPause(dev.id) },
                 )
             }
         }
@@ -259,6 +275,22 @@ fun SmartHomeScreen(
             onAdd = { ip, name, room ->
                 controller.probeAndAddIp(ip, name, room)
                 showAddIp = false
+            },
+            onAddMultiBrand = { ip, name, room, driver, category ->
+                controller.probeAndAddDevice(ip, name, room, driver, category)
+                showAddIp = false
+            },
+        )
+    }
+
+    if (showHaDialog) {
+        HomeAssistantConnectDialog(
+            initialConfig = ui.homeAssistant,
+            detectedUrl = ui.detectedHaUrl,
+            onDismiss = { showHaDialog = false },
+            onConnect = { url, token ->
+                controller.connectHomeAssistant(url, token)
+                showHaDialog = false
             },
         )
     }

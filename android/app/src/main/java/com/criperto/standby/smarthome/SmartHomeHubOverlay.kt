@@ -95,7 +95,7 @@ fun SmartHomeHubOverlay(
                     )
                     Column {
                         Text(
-                            text = "%02d:%02d · Hogar Local WiZ".format(signals.hour, signals.minute),
+                            text = "%02d:%02d · Hogar Inteligente".format(signals.hour, signals.minute),
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
@@ -229,6 +229,18 @@ fun SmartHomeHubOverlay(
                                 onInteractionPing()
                                 editingDeviceId = dev.id
                             },
+                            onAcControl = { temp, mode ->
+                                onInteractionPing()
+                                controller.setAcTemperature(dev.id, temp, mode)
+                            },
+                            onTvMuteToggle = {
+                                onInteractionPing()
+                                controller.setTvVolume(dev.id, st.volumePct ?: st.brightness, toggleMute = true)
+                            },
+                            onTvPlayPause = {
+                                onInteractionPing()
+                                controller.triggerTvMediaPlayPause(dev.id)
+                            },
                             modifier = Modifier.width(310.dp),
                         )
                     }
@@ -260,6 +272,11 @@ fun SmartHomeHubOverlay(
             onAdd = { ip, name, room ->
                 onInteractionPing()
                 controller.probeAndAddIp(ip, name, room)
+                showAddIp = false
+            },
+            onAddMultiBrand = { ip, name, room, driver, category ->
+                onInteractionPing()
+                controller.probeAndAddDevice(ip, name, room, driver, category)
                 showAddIp = false
             },
         )

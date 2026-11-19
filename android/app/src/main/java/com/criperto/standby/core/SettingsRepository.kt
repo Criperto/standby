@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.map
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "standby_settings")
 
 data class AppSettings(
-    val activePresetName: String = "apple_standby_duotone",
+    val activePresetName: String = "iphone_1_v2",
     // Trigger & runtime
     val triggersEnabled: Boolean = true,
     val autoTriggerServiceEnabled: Boolean = true,
@@ -144,7 +144,7 @@ class SettingsRepository(private val context: Context) {
         }.getOrDefault(emptyList())
 
         AppSettings(
-            activePresetName = p[Keys.ACTIVE_PRESET] ?: "apple_standby_duotone",
+            activePresetName = p[Keys.ACTIVE_PRESET] ?: "iphone_1_v2",
             triggersEnabled = p[Keys.TRIGGERS_ENABLED] ?: true,
             autoTriggerServiceEnabled = p[Keys.AUTO_TRIGGER_SERVICE] ?: true,
             dreamServiceEnabled = p[Keys.DREAM_SERVICE] ?: true,
@@ -186,7 +186,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.settingsDataStore.edit { prefs ->
             val current = AppSettings(
-                activePresetName = prefs[Keys.ACTIVE_PRESET] ?: "apple_standby_duotone",
+                activePresetName = prefs[Keys.ACTIVE_PRESET] ?: "iphone_1_v2",
                 triggersEnabled = prefs[Keys.TRIGGERS_ENABLED] ?: true,
                 autoTriggerServiceEnabled = prefs[Keys.AUTO_TRIGGER_SERVICE] ?: true,
                 dreamServiceEnabled = prefs[Keys.DREAM_SERVICE] ?: true,

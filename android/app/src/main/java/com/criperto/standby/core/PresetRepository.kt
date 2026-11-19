@@ -28,10 +28,12 @@ class PresetRepository(
     private val _activePreset = MutableStateFlow(StandByPreset())
     val activePresetFlow: StateFlow<StandByPreset> = _activePreset.asStateFlow()
 
-    private val _activePresetId = MutableStateFlow("apple_standby_duotone")
+    private val _activePresetId = MutableStateFlow("iphone_1_v2")
     val activePresetIdFlow: StateFlow<String> = _activePresetId.asStateFlow()
 
     private val builtinFiles = listOf(
+        "iphone_1_v2.json",
+        "iphone_standby_pure.json",
         "apple_standby_duotone.json",
         "apple_weather_home.json",
         "amoled_minimal.json",
@@ -41,14 +43,18 @@ class PresetRepository(
     )
 
     suspend fun initialize(initialActiveId: String) = withContext(Dispatchers.IO) {
-        seedBuiltinsIfMissing()
+        val migratedToV3 = seedBuiltinsIfMissing()
         refreshList()
-        val chosen = if (presetFile(initialActiveId).exists()) initialActiveId else "apple_standby_duotone"
+        val chosen = when {
+            migratedToV3 -> "iphone_1_v2"
+            presetFile(initialActiveId).exists() -> initialActiveId
+            else -> "iphone_1_v2"
+        }
         loadAndActivate(chosen)
     }
 
-    private fun seedBuiltinsIfMissing() {
-        val marker = File(presetsDir, ".builtin_seed_v2")
+    private fun seedBuiltinsIfMissing(): Boolean {
+        val marker = File(presetsDir, ".builtin_seed_v3")
         val forceRefreshBuiltins = !marker.exists()
         for (fileName in builtinFiles) {
             val dst = File(presetsDir, fileName)
@@ -61,8 +67,9 @@ class PresetRepository(
             }
         }
         if (forceRefreshBuiltins) {
-            runCatching { marker.writeText("v2") }
+            runCatching { marker.writeText("v3") }
         }
+        return forceRefreshBuiltins
     }
 
     private fun presetFile(id: String): File {

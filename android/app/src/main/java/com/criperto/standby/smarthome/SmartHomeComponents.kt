@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,18 +29,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,11 +92,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Remodeled WiZ light card matching the user's Google Home mockup:
- * - Top touch area: horizontal fill bar showing brightness %.
- *   - 1 tap anywhere on top area toggles OFF <-> ON.
- *   - Horizontal slide anywhere on top area changes brightness 10%..100%.
- * - Bottom strip separated by divider: large 'Color / Escenas' pill button.
+ * 100% Material You Dynamic Color Google Home-style card for Lights, ACs, Smart TVs, Switches & Fans.
+ * Zero hardcoded blue colors — adapts automatically to green, violet, amber, or any wallpaper palette.
  */
 @Composable
 fun WizDeviceCard(
@@ -101,6 +105,9 @@ fun WizDeviceCard(
     onTogglePower: (Boolean) -> Unit,
     onBrightnessChange: (Int) -> Unit,
     onOpenControls: () -> Unit,
+    onAcControl: ((tempC: Int, hvacMode: String?) -> Unit)? = null,
+    onTvMuteToggle: (() -> Unit)? = null,
+    onTvPlayPause: (() -> Unit)? = null,
     onRenameRequest: (() -> Unit)? = null,
     onDeleteRequest: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -109,27 +116,45 @@ fun WizDeviceCard(
     val curOnToggle by rememberUpdatedState(onTogglePower)
     val curOnBrightness by rememberUpdatedState(onBrightnessChange)
 
+    val cs = MaterialTheme.colorScheme
     val lampHex = remember(state.isOn, state.sceneId, state.tempKelvin, state.r, state.g, state.b) {
         WizColorMath.stateToHex(state)
     }
-    val lampColor = remember(lampHex) {
-        runCatching { Color(android.graphics.Color.parseColor(lampHex)) }.getOrDefault(Color(0xFFEEF6FF))
+    val lampColor = remember(lampHex, cs.primaryContainer) {
+        runCatching { Color(android.graphics.Color.parseColor(lampHex)) }.getOrDefault(cs.primaryContainer)
     }
-    val modeLabel = remember(state.isOn, state.sceneId, state.tempKelvin, state.r, state.g, state.b, scenes) {
-        WizColorMath.stateModeLabel(state, scenes)
+    val modeLabel = remember(state, scenes, device.category) {
+        WizColorMath.stateModeLabel(state, scenes, device.category)
     }
 
-    val baseBg = Color(0xFF283A54)
-    val fillTint = if (state.isOn) {
-        // Warm taupe/amber-tinted active fill like the user's mockup blended with lamp color
-        lerp(Color(0xFF96877A), lampColor, 0.35f)
-    } else {
-        Color(0xFF33445E)
+    val baseBg = cs.surfaceContainerHighest
+    val hasExplicitRgb = state.r != null && state.g != null && state.b != null && state.sceneId == null && state.tempKelvin == null
+    val fillTint = when {
+        !state.isOn -> cs.surfaceContainerHigh
+        hasExplicitRgb -> lerp(cs.primaryContainer, lampColor, 0.45f)
+        else -> cs.primaryContainer
     }
-    val fillFraction = if (state.isOn) {
-        (state.brightness.coerceIn(10, 100) / 100f)
-    } else {
-        0f
+
+    val fillFraction = when {
+        !state.isOn -> 0f
+        device.category == "ac" -> {
+            val t = (state.targetTempC ?: state.brightness).coerceIn(16, 30)
+            ((t - 16f) / 14f).coerceIn(0.08f, 1f)
+        }
+        device.category == "tv" -> {
+            val v = (state.volumePct ?: state.brightness).coerceIn(0, 100)
+            (v / 100f).coerceIn(0.05f, 1f)
+        }
+        device.category == "switch" -> 1f
+        else -> (state.brightness.coerceIn(10, 100) / 100f)
+    }
+
+    val rightStatusText = when {
+        !state.isOn -> "OFF"
+        device.category == "ac" -> "${state.targetTempC ?: state.brightness}°C"
+        device.category == "tv" -> if (state.isMuted) "MUTE" else "Vol %${state.volumePct ?: state.brightness}"
+        device.category == "switch" -> "ON"
+        else -> "%${state.brightness}"
     }
 
     Card(
@@ -150,16 +175,20 @@ fun WizDeviceCard(
                             },
                         )
                     }
-                    .pointerInput(device.id) {
-                        detectHorizontalDragGestures(
-                            onHorizontalDrag = { change, _ ->
-                                change.consume()
-                                val w = size.width.toFloat().coerceAtLeast(1f)
-                                val pct = ((change.position.x / w) * 100f).roundToInt().coerceIn(10, 100)
-                                curOnBrightness(pct)
-                            },
-                        )
-                    },
+                    .then(
+                        if (device.category != "switch") {
+                            Modifier.pointerInput(device.id) {
+                                detectHorizontalDragGestures(
+                                    onHorizontalDrag = { change, _ ->
+                                        change.consume()
+                                        val w = size.width.toFloat().coerceAtLeast(1f)
+                                        val pct = ((change.position.x / w) * 100f).roundToInt().coerceIn(10, 100)
+                                        curOnBrightness(pct)
+                                    },
+                                )
+                            }
+                        } else Modifier
+                    ),
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     if (fillFraction > 0.01f) {
@@ -184,7 +213,7 @@ fun WizDeviceCard(
                     ) {
                         Text(
                             text = device.name,
-                            color = Color.White,
+                            color = if (state.isOn) cs.onPrimaryContainer else cs.onSurface,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -192,7 +221,13 @@ fun WizDeviceCard(
                         )
                         Text(
                             text = "${device.room} · $modeLabel" + (if (!reachable) " (sin resp.)" else ""),
-                            color = if (reachable) Color.White.copy(alpha = 0.88f) else MaterialTheme.colorScheme.error,
+                            color = if (!reachable) {
+                                cs.error
+                            } else if (state.isOn) {
+                                cs.onPrimaryContainer.copy(alpha = 0.85f)
+                            } else {
+                                cs.onSurfaceVariant
+                            },
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -204,8 +239,8 @@ fun WizDeviceCard(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = if (state.isOn) "%${state.brightness}" else "OFF",
-                            color = if (state.isOn) Color(0xFF5CA8FF) else Color.White.copy(alpha = 0.55f),
+                            text = rightStatusText,
+                            color = if (state.isOn) cs.primary else cs.onSurfaceVariant.copy(alpha = 0.7f),
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -216,10 +251,10 @@ fun WizDeviceCard(
 
             HorizontalDivider(
                 thickness = 1.dp,
-                color = Color.White.copy(alpha = 0.22f),
+                color = cs.outlineVariant.copy(alpha = 0.45f),
             )
 
-            // Bottom strip: big easy-to-hit 'Color / Escenas' pill button
+            // Bottom strip adapted by device category (Lights, AC, Smart TV, Switch)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -227,26 +262,80 @@ fun WizDeviceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(
-                    onClick = onOpenControls,
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Rounded.Palette,
-                        contentDescription = null,
-                        tint = Color(0xFF8CC4FF),
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Color / Escenas",
-                        color = Color(0xFF8CC4FF),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                    )
+                    when (device.category) {
+                        "ac" -> {
+                            val curTemp = state.targetTempC ?: 24
+                            AssistChip(
+                                onClick = { onAcControl?.invoke((curTemp - 1).coerceAtLeast(16), null) },
+                                label = { Text("-1°C") },
+                            )
+                            AssistChip(
+                                onClick = { onAcControl?.invoke((curTemp + 1).coerceAtMost(30), null) },
+                                label = { Text("+1°C") },
+                            )
+                            AssistChip(
+                                onClick = { onAcControl?.invoke(curTemp, "cool") },
+                                leadingIcon = { Icon(Icons.Rounded.AcUnit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Frío") },
+                            )
+                            AssistChip(
+                                onClick = { onAcControl?.invoke(curTemp, "heat") },
+                                leadingIcon = { Icon(Icons.Rounded.WbSunny, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Calor") },
+                            )
+                        }
+                        "tv" -> {
+                            AssistChip(
+                                onClick = { onTvMuteToggle?.invoke() },
+                                leadingIcon = { Icon(Icons.Rounded.VolumeOff, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text(if (state.isMuted) "Unmute" else "Mute") },
+                            )
+                            AssistChip(
+                                onClick = { onTvPlayPause?.invoke() },
+                                leadingIcon = { Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Play/Pausa") },
+                            )
+                            AssistChip(
+                                onClick = { onTogglePower(!state.isOn) },
+                                leadingIcon = { Icon(Icons.Rounded.Tv, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text(device.driver.uppercase()) },
+                            )
+                        }
+                        "switch", "fan" -> {
+                            AssistChip(
+                                onClick = { onTogglePower(!state.isOn) },
+                                label = { Text("${device.driver.uppercase()} · ${if (state.isOn) "Activo" else "Apagado"}") },
+                            )
+                        }
+                        else -> {
+                            OutlinedButton(
+                                onClick = onOpenControls,
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.2.dp, cs.outline),
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Palette,
+                                    contentDescription = null,
+                                    tint = cs.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Color / Escenas",
+                                    color = cs.primary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 if (onRenameRequest != null || onDeleteRequest != null) {
@@ -256,7 +345,7 @@ fun WizDeviceCard(
                                 Icon(
                                     Icons.Rounded.Edit,
                                     contentDescription = "Editar",
-                                    tint = Color.White.copy(alpha = 0.8f),
+                                    tint = cs.onSurfaceVariant,
                                 )
                             }
                         }
@@ -265,7 +354,7 @@ fun WizDeviceCard(
                                 Icon(
                                     Icons.Rounded.Delete,
                                     contentDescription = "Quitar",
-                                    tint = Color.White.copy(alpha = 0.8f),
+                                    tint = cs.onSurfaceVariant,
                                 )
                             }
                         }
@@ -276,10 +365,6 @@ fun WizDeviceCard(
     }
 }
 
-/**
- * Full-width horizontal Color / White / Scenes modal optimized for one-tap landscape use
- * without cramped vertical scrolling or tiny touch targets.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WizControlDialog(
@@ -297,14 +382,13 @@ fun WizControlDialog(
 ) {
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // Open directly on the tab matching the bulb's active state!
     var tab by remember {
         mutableIntStateOf(
             when {
                 state.sceneId != null && state.sceneId > 0 -> 2
                 state.tempKelvin != null && state.tempKelvin > 0 -> 1
                 state.r != null && state.g != null && state.b != null -> 0
-                else -> 1 // Default to Blanco / Luz diurna
+                else -> 1
             }
         )
     }
@@ -318,7 +402,7 @@ fun WizControlDialog(
     }
     var favNamePrompt by remember { mutableStateOf(false) }
 
-    val modeLabel = remember(state, scenes) { WizColorMath.stateModeLabel(state, scenes) }
+    val modeLabel = remember(state, scenes) { WizColorMath.stateModeLabel(state, scenes, device.category) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -339,7 +423,6 @@ fun WizControlDialog(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // Header bar with huge buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -360,7 +443,7 @@ fun WizControlDialog(
                         FilledTonalButton(
                             onClick = {
                                 onInteractionPing()
-                                onSetScene(12, 100, state.brightness) // 12 = Luz diurna
+                                onSetScene(12, 100, state.brightness)
                             },
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         ) {
@@ -433,7 +516,6 @@ fun WizControlDialog(
                             .weight(1f, fill = false),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // Left Column: Brightness bar + Primary Wheel/Slider
                         Column(
                             modifier = Modifier
                                 .weight(0.42f)
@@ -500,7 +582,6 @@ fun WizControlDialog(
 
                         VerticalDivider()
 
-                        // Right Column: Big zero-aim tiles
                         Column(
                             modifier = Modifier
                                 .weight(0.58f)
@@ -523,7 +604,6 @@ fun WizControlDialog(
                         }
                     }
                 } else {
-                    // Portrait layout with the same big easy-to-hit buttons
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -647,6 +727,7 @@ private fun GoogleHomeBrightnessBar(
     onBrightnessChange: (Int) -> Unit,
 ) {
     val curOnBrightness by rememberUpdatedState(onBrightnessChange)
+    val cs = MaterialTheme.colorScheme
     val frac = (brightness.coerceIn(10, 100) / 100f)
 
     Box(
@@ -654,7 +735,7 @@ private fun GoogleHomeBrightnessBar(
             .fillMaxWidth()
             .height(54.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF233248))
+            .background(cs.surfaceContainerHighest)
             .pointerInput(Unit) {
                 detectTapGestures { pos ->
                     val w = size.width.toFloat().coerceAtLeast(1f)
@@ -673,7 +754,7 @@ private fun GoogleHomeBrightnessBar(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(
-                color = Color(0xFF4778B8),
+                color = cs.primaryContainer,
                 topLeft = Offset.Zero,
                 size = Size(size.width * frac, size.height),
             )
@@ -687,13 +768,13 @@ private fun GoogleHomeBrightnessBar(
         ) {
             Text(
                 text = "Deslizar Brillo",
-                color = Color.White,
+                color = cs.onPrimaryContainer,
                 fontWeight = FontWeight.Medium,
                 fontSize = 15.sp,
             )
             Text(
                 text = "%$brightness",
-                color = Color.White,
+                color = cs.primary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp,
             )
@@ -929,20 +1010,61 @@ fun HsvColorWheel(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AddByIpDialog(
     onDismiss: () -> Unit,
     onAdd: (ip: String, name: String?, room: String) -> Unit,
+    onAddMultiBrand: ((ip: String, name: String?, room: String, driver: String, category: String) -> Unit)? = null,
 ) {
     var ip by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var room by remember { mutableStateOf("Escritorio") }
+    var driver by remember { mutableStateOf("wiz") }
+    var category by remember { mutableStateOf("light") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Añadir lámpara WiZ por IP") },
+        title = { Text("Añadir Dispositivo Local (Multi-Marca)") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Protocolo / Marca", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "wiz" to "WiZ UDP",
+                        "wled" to "WLED",
+                        "shelly" to "Shelly",
+                        "tasmota" to "Tasmota",
+                        "yeelight" to "Yeelight",
+                    ).forEach { (id, label) ->
+                        FilterChip(
+                            selected = driver == id,
+                            onClick = { driver = id },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+
+                Text("Tipo de Dispositivo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "light" to "Foco / Luz",
+                        "ac" to "Aire Acond.",
+                        "tv" to "Smart TV",
+                        "switch" to "Enchufe",
+                        "fan" to "Ventilador",
+                    ).forEach { (id, label) ->
+                        FilterChip(
+                            selected = category == id,
+                            onClick = { category = id },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = ip,
                     onValueChange = { ip = it },
@@ -969,9 +1091,71 @@ fun AddByIpDialog(
         confirmButton = {
             Button(
                 enabled = ip.isNotBlank(),
-                onClick = { onAdd(ip, name.ifBlank { null }, room) },
+                onClick = {
+                    if (onAddMultiBrand != null) {
+                        onAddMultiBrand(ip, name.ifBlank { null }, room, driver, category)
+                    } else {
+                        onAdd(ip, name.ifBlank { null }, room)
+                    }
+                },
             ) {
                 Text("Conectar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+    )
+}
+
+@Composable
+fun HomeAssistantConnectDialog(
+    initialConfig: HomeAssistantConfig,
+    detectedUrl: String?,
+    onDismiss: () -> Unit,
+    onConnect: (serverUrl: String, token: String) -> Unit,
+) {
+    var url by remember(initialConfig.serverUrl, detectedUrl) {
+        mutableStateOf(
+            initialConfig.serverUrl.ifBlank { detectedUrl ?: "http://homeassistant.local:8123" }
+        )
+    }
+    var token by remember(initialConfig.accessToken) {
+        mutableStateOf(initialConfig.accessToken)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Vincular Home Assistant Server") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Importa y controla automáticamente focos de cualquier marca (light.*), Smart TVs (media_player.*), Aires Acondicionados (climate.*), enchufes (switch.*) y ventiladores (fan.*).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("URL del servidor (ej. http://192.168.100.50:8123)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Long-Lived Access Token (Perfil -> Tokens)") },
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = url.isNotBlank(),
+                onClick = { onConnect(url, token) },
+            ) {
+                Text("Sincronizar Dispositivos")
             }
         },
         dismissButton = {

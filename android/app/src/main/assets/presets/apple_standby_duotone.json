@@ -30,7 +30,8 @@
       "fontWeight": 800,
       "letterSpacing": -12,
       "timeFormat": 0,
-      "isCustomColor": true,
+      "textColorChoice": "primary",
+      "isCustomColor": false,
       "customHex": "#B9D4FF",
       "fillAlpha": 1.0,
       "textAlign": "center"
@@ -50,7 +51,8 @@
       "fontWeight": 700,
       "letterSpacing": -1,
       "customContent": "$DAY_SHORT $DAY_NUM",
-      "isCustomColor": true,
+      "textColorChoice": "primary",
+      "isCustomColor": false,
       "customHex": "#96BAFF",
       "textAlign": "left"
     },

@@ -444,6 +444,40 @@ pub struct SceneObject {
     pub wiz_action: Option<String>,
     #[serde(default)]
     pub wiz_scene_id: Option<i32>,
+    #[serde(default = "default_wiz_style")]
+    pub wiz_style: String,
+    #[serde(default = "default_wiz_title")]
+    pub wiz_title_template: String,
+    #[serde(default = "default_wiz_subtitle")]
+    pub wiz_subtitle_template: String,
+    #[serde(default = "default_true")]
+    pub wiz_show_percent: bool,
+    #[serde(default)]
+    pub wiz_show_icon: bool,
+    #[serde(default)]
+    pub wiz_use_lamp_color: bool,
+    #[serde(default = "default_wiz_bg_choice")]
+    pub wiz_bg_color_choice: String,
+    #[serde(default)]
+    pub wiz_is_custom_bg_color: bool,
+    #[serde(default = "default_wiz_bg_hex")]
+    pub wiz_custom_bg_hex: String,
+    #[serde(default = "default_wiz_bg_alpha")]
+    pub wiz_bg_alpha: f64,
+    #[serde(default = "default_wiz_bar_choice")]
+    pub wiz_bar_color_choice: String,
+    #[serde(default)]
+    pub wiz_is_custom_bar_color: bool,
+    #[serde(default = "default_wiz_bar_hex")]
+    pub wiz_custom_bar_hex: String,
+    #[serde(default = "default_wiz_bar_alpha")]
+    pub wiz_bar_alpha: f64,
+    #[serde(default = "default_accent_choice")]
+    pub wiz_accent_color_choice: String,
+    #[serde(default)]
+    pub wiz_is_custom_accent_color: bool,
+    #[serde(default = "default_blue_hex")]
+    pub wiz_custom_accent_hex: String,
 
     // Dynamic expressions, visibility & interaction
     #[serde(default)]
@@ -611,6 +645,33 @@ fn default_depth_thresh() -> f64 {
 fn default_media_action() -> String {
     "play_pause".to_string()
 }
+fn default_wiz_style() -> String {
+    "pill_slider".to_string()
+}
+fn default_wiz_title() -> String {
+    "$WIZ_NAME".to_string()
+}
+fn default_wiz_subtitle() -> String {
+    "Escritorio".to_string()
+}
+fn default_wiz_bg_choice() -> String {
+    "surfaceContainer".to_string()
+}
+fn default_wiz_bg_hex() -> String {
+    "#202924".to_string()
+}
+fn default_wiz_bg_alpha() -> f64 {
+    0.94
+}
+fn default_wiz_bar_choice() -> String {
+    "primaryContainer".to_string()
+}
+fn default_wiz_bar_hex() -> String {
+    "#3B5249".to_string()
+}
+fn default_wiz_bar_alpha() -> f64 {
+    0.96
+}
 fn default_fade_ms() -> u32 {
     150
 }
@@ -737,6 +798,23 @@ impl Default for SceneObject {
             wiz_device_id: None,
             wiz_action: None,
             wiz_scene_id: None,
+            wiz_style: default_wiz_style(),
+            wiz_title_template: default_wiz_title(),
+            wiz_subtitle_template: default_wiz_subtitle(),
+            wiz_show_percent: true,
+            wiz_show_icon: false,
+            wiz_use_lamp_color: false,
+            wiz_bg_color_choice: default_wiz_bg_choice(),
+            wiz_is_custom_bg_color: false,
+            wiz_custom_bg_hex: default_wiz_bg_hex(),
+            wiz_bg_alpha: default_wiz_bg_alpha(),
+            wiz_bar_color_choice: default_wiz_bar_choice(),
+            wiz_is_custom_bar_color: false,
+            wiz_custom_bar_hex: default_wiz_bar_hex(),
+            wiz_bar_alpha: default_wiz_bar_alpha(),
+            wiz_accent_color_choice: default_accent_choice(),
+            wiz_is_custom_accent_color: false,
+            wiz_custom_accent_hex: default_blue_hex(),
             visible_condition: String::new(),
             fade_in_ms: 150,
             fade_out_ms: 150,
@@ -805,15 +883,33 @@ pub struct ValidationReport {
 
 const VALID_OBJECT_TYPES: &[&str] = &[
     "clock",
+    "clock_hours",
+    "clock_minutes",
+    "clock_seconds",
+    "clock_separator",
+    "clock_ampm",
+    "clock_h1",
+    "clock_h2",
+    "clock_m1",
+    "clock_m2",
+    "clock_s1",
+    "clock_s2",
     "date",
+    "datetime",
     "custom_text",
     "shape",
     "svg_icon",
+    "icon_svg",
     "battery",
+    "battery_icon",
+    "battery_percent",
+    "battery_bar",
+    "weather",
     "weather_temp",
     "weather_icon",
     "media",
     "media_art",
+    "media_cover",
     "media_title",
     "media_artist",
     "media_position",
@@ -824,7 +920,10 @@ const VALID_OBJECT_TYPES: &[&str] = &[
     "media_shuffle",
     "media_loop",
     "media_button",
+    "media_progress",
     "wiz_button",
+    "wiz_device",
+    "smart_device",
     "group",
     "wallpaper_mask",
 ];
