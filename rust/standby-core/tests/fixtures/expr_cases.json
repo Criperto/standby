@@ -1,0 +1,541 @@
+[
+  {
+    "id": "cond_hasCover",
+    "type": "condition",
+    "expr": "hasCover",
+    "context": { "hasCover": true },
+    "expected": true
+  },
+  {
+    "id": "cond_not_hasCover",
+    "type": "condition",
+    "expr": "!hasCover",
+    "context": { "hasCover": true },
+    "expected": false
+  },
+  {
+    "id": "cond_hasMedia_and_isPlaying",
+    "type": "condition",
+    "expr": "hasMedia && isPlaying",
+    "context": { "hasMedia": false, "isPlaying": true },
+    "expected": false
+  },
+  {
+    "id": "cond_battery_lt_20",
+    "type": "condition",
+    "expr": "battery < 20",
+    "context": { "battery": 50 },
+    "expected": false
+  },
+  {
+    "id": "cond_battery_gte_50",
+    "type": "condition",
+    "expr": "battery >= 50",
+    "context": { "battery": 50 },
+    "expected": true
+  },
+  {
+    "id": "cond_isCapsLock",
+    "type": "condition",
+    "expr": "isCapsLock",
+    "context": { "isCapsLock": false },
+    "expected": false
+  },
+  {
+    "id": "cond_isCharging_or_hasBattery",
+    "type": "condition",
+    "expr": "!hasBattery || isCharging",
+    "context": { "hasBattery": true, "isCharging": false },
+    "expected": false
+  },
+  {
+    "id": "cond_complex_logic",
+    "type": "condition",
+    "expr": "(battery > 20) && (hasCover || isPlaying)",
+    "context": { "battery": 50, "hasCover": false, "isPlaying": true },
+    "expected": true
+  },
+  {
+    "id": "math_cad_add",
+    "type": "node",
+    "expr": "+15",
+    "context": { "baseValue": 100 },
+    "currentVal": 100,
+    "expected": 115
+  },
+  {
+    "id": "math_cad_sub_assign",
+    "type": "node",
+    "expr": "-=20",
+    "context": { "baseValue": 100 },
+    "currentVal": 100,
+    "expected": 80
+  },
+  {
+    "id": "math_cad_sub",
+    "type": "node",
+    "expr": "-20",
+    "context": { "baseValue": 100 },
+    "currentVal": 100,
+    "expected": 80,
+    "knownFail": true,
+    "description": "Legacy CAD evalMath: '-20' sin espacio no caía a resta por regex /^-\\d/"
+  },
+  {
+    "id": "math_cad_mul",
+    "type": "node",
+    "expr": "*1.5",
+    "context": { "baseValue": 200 },
+    "currentVal": 200,
+    "expected": 300
+  },
+  {
+    "id": "math_cad_div",
+    "type": "node",
+    "expr": "/2",
+    "context": { "baseValue": 400 },
+    "currentVal": 400,
+    "expected": 200
+  },
+  {
+    "id": "math_cad_infix_add",
+    "type": "node",
+    "expr": "50 + 25",
+    "context": {},
+    "expected": 75
+  },
+  {
+    "id": "math_cad_neg_sub",
+    "type": "node",
+    "expr": "-32 - 50",
+    "context": {},
+    "expected": -82
+  },
+  {
+    "id": "math_clamp_normal",
+    "type": "node",
+    "expr": "clamp(50, 0, 100)",
+    "context": {},
+    "expected": 50
+  },
+  {
+    "id": "math_clamp_low",
+    "type": "node",
+    "expr": "clamp(-10, 0, 100)",
+    "context": {},
+    "expected": 0
+  },
+  {
+    "id": "math_clamp_high",
+    "type": "node",
+    "expr": "clamp(150, 0, 100)",
+    "context": {},
+    "expected": 100
+  },
+  {
+    "id": "math_lerp",
+    "type": "node",
+    "expr": "lerp(10, 100, 0.5)",
+    "context": {},
+    "expected": 55
+  },
+  {
+    "id": "math_map",
+    "type": "node",
+    "expr": "map(battery, 0, 100, 20, 200)",
+    "context": { "battery": 50 },
+    "expected": 110
+  },
+  {
+    "id": "math_min",
+    "type": "node",
+    "expr": "min(10, 20)",
+    "context": {},
+    "expected": 10
+  },
+  {
+    "id": "math_max",
+    "type": "node",
+    "expr": "max(10, 20)",
+    "context": {},
+    "expected": 20
+  },
+  {
+    "id": "math_abs",
+    "type": "node",
+    "expr": "abs(-45)",
+    "context": {},
+    "expected": 45
+  },
+  {
+    "id": "math_round",
+    "type": "node",
+    "expr": "round(12.7)",
+    "context": {},
+    "expected": 13
+  },
+  {
+    "id": "math_cos",
+    "type": "node",
+    "expr": "cos(0, 50)",
+    "context": {},
+    "expected": 50
+  },
+  {
+    "id": "when_basic",
+    "type": "node",
+    "expr": "when(hasCover, -32, -82)",
+    "context": { "hasCover": true },
+    "expected": -32
+  },
+  {
+    "id": "when_baseValue",
+    "type": "node",
+    "expr": "when(!hasCover, baseValue - 50, baseValue)",
+    "context": { "hasCover": false, "baseValue": 100 },
+    "expected": 50
+  },
+  {
+    "id": "nested_when_map",
+    "type": "node",
+    "expr": "when(hasMedia, map(battery, 0, 100, 10, 60), 0)",
+    "context": { "hasMedia": true, "battery": 50 },
+    "expected": 35
+  },
+  {
+    "id": "fail_clamp_battery_mult",
+    "type": "node",
+    "expr": "clamp(battery * 3.6, 0, 360)",
+    "context": { "battery": 50 },
+    "expected": 180,
+    "knownFail": true,
+    "description": "B4: Multiplicación entre identificador y número dentro de función devuelve 0 en el motor anterior"
+  },
+  {
+    "id": "fail_min_battery_mult",
+    "type": "node",
+    "expr": "min(battery * 2, 100)",
+    "context": { "battery": 60 },
+    "expected": 100,
+    "knownFail": true,
+    "description": "B4: Multiplicación como argumento no soportada en motor anterior"
+  },
+  {
+    "id": "fail_precedence_mult_add",
+    "type": "node",
+    "expr": "2 + 3 * 4",
+    "context": {},
+    "expected": 14,
+    "knownFail": true,
+    "description": "B4: Precedencia de operadores (* antes de +)"
+  },
+  {
+    "id": "fail_ternary_operator",
+    "type": "node",
+    "expr": "hasCover ? -32 : -82",
+    "context": { "hasCover": true },
+    "expected": -32,
+    "knownFail": true,
+    "description": "B4: Operador ternario no soportado en motor anterior"
+  },
+  {
+    "id": "fail_scientific_notation",
+    "type": "node",
+    "expr": "1e-3",
+    "context": {},
+    "expected": 0.001,
+    "knownFail": true,
+    "description": "B3: Notación científica en tokenizer"
+  },
+  {
+    "id": "fail_parse_quoted_easing_commas",
+    "type": "parse",
+    "expr": "when(hasCover, -32, -82, 350, \"0.2, 0.0, 0.0, 1.0\")",
+    "expectedArgsCount": 5,
+    "expectedLastArg": "\"0.2, 0.0, 0.0, 1.0\"",
+    "knownFail": true,
+    "description": "B3: Comas dentro de strings entrecomillados parten los argumentos erróneamente en el motor anterior"
+  },
+  {
+    "id": "state_expanded_in_when",
+    "type": "node",
+    "expr": "when(expanded, 120, 0)",
+    "context": { "scopeId": "group_1", "state": { "expanded": 1 } },
+    "expected": 120
+  },
+  {
+    "id": "state_expanded_in_cond",
+    "type": "condition",
+    "expr": "hasMedia && expanded",
+    "context": { "hasMedia": true, "state": { "expanded": 1 } },
+    "expected": true
+  },
+  {
+    "id": "state_func_call",
+    "type": "node",
+    "expr": "state('expanded')",
+    "context": { "state": { "expanded": 42 } },
+    "expected": 42
+  },
+  {
+    "id": "anim_basic_true",
+    "type": "node",
+    "expr": "anim(expanded, spring(10, 0.65, 1, 0.5))",
+    "context": { "state": { "expanded": 1 } },
+    "expected": 1
+  },
+  {
+    "id": "anim_basic_false",
+    "type": "node",
+    "expr": "anim(expanded, spring(10, 0.65, 1, 0.5))",
+    "context": { "state": { "expanded": 0 } },
+    "expected": 0
+  },
+  {
+    "id": "anim_lerp_usage",
+    "type": "node",
+    "expr": "lerp(56, 176, anim(expanded, spring(10, 0.65, 1, 0.5)))",
+    "context": { "state": { "expanded": 1 } },
+    "expected": 176
+  },
+  {
+    "id": "anim_lerp_usage_false",
+    "type": "node",
+    "expr": "lerp(56, 176, anim(expanded, spring(10, 0.65, 1, 0.5)))",
+    "context": { "state": { "expanded": 0 } },
+    "expected": 56
+  },
+  {
+    "id": "ctx_clock_t",
+    "type": "node",
+    "expr": "t * 2",
+    "context": { "t": 2.5 },
+    "expected": 5
+  },
+  {
+    "id": "ctx_screenW_screenH",
+    "type": "node",
+    "expr": "screenW / 2",
+    "context": { "screenW": 1920, "screenH": 1080 },
+    "expected": 960
+  },
+  {
+    "id": "ctx_hour_condition",
+    "type": "condition",
+    "expr": "hour >= 6 && hour < 22",
+    "context": { "hour": 14 },
+    "expected": true
+  },
+  {
+    "id": "ctx_volume_lerp",
+    "type": "node",
+    "expr": "lerp(0, 100, volume)",
+    "context": { "volume": 0.5 },
+    "expected": 50
+  },
+  {
+    "id": "ctx_mpris_flags",
+    "type": "condition",
+    "expr": "canNext && !isShuffle",
+    "context": { "canNext": 1, "isShuffle": 0 },
+    "expected": true
+  },
+  {
+    "id": "ctx_media_progress",
+    "type": "node",
+    "expr": "lerp(0, 440, mediaProgress)",
+    "context": { "mediaProgress": 0.25 },
+    "expected": 110
+  },
+  {
+    "id": "ctx_media_position_length",
+    "type": "condition",
+    "expr": "mediaPosition > 30 && mediaLength > 120",
+    "context": { "mediaPosition": 45, "mediaLength": 210 },
+    "expected": true
+  },
+  {
+    "id": "math_step_0",
+    "type": "node",
+    "expr": "step(50, 20)",
+    "context": {},
+    "expected": 0
+  },
+  {
+    "id": "math_step_1",
+    "type": "node",
+    "expr": "step(50, 70)",
+    "context": {},
+    "expected": 1
+  },
+  {
+    "id": "math_smoothstep_mid",
+    "type": "node",
+    "expr": "smoothstep(0, 10, 5)",
+    "context": {},
+    "expected": 0.5
+  },
+  {
+    "id": "math_smoothstep_low",
+    "type": "node",
+    "expr": "smoothstep(0, 10, -5)",
+    "context": {},
+    "expected": 0
+  },
+  {
+    "id": "math_smoothstep_high",
+    "type": "node",
+    "expr": "smoothstep(0, 10, 15)",
+    "context": {},
+    "expected": 1
+  },
+  {
+    "id": "math_mod",
+    "type": "node",
+    "expr": "mod(17, 5)",
+    "context": {},
+    "expected": 2
+  },
+  {
+    "id": "math_pow",
+    "type": "node",
+    "expr": "pow(2, 4)",
+    "context": {},
+    "expected": 16
+  },
+  {
+    "id": "math_sqrt",
+    "type": "node",
+    "expr": "sqrt(64)",
+    "context": {},
+    "expected": 8
+  },
+  {
+    "id": "math_floor",
+    "type": "node",
+    "expr": "floor(7.9)",
+    "context": {},
+    "expected": 7
+  },
+  {
+    "id": "math_ceil",
+    "type": "node",
+    "expr": "ceil(7.1)",
+    "context": {},
+    "expected": 8
+  },
+  {
+    "id": "math_sign_pos",
+    "type": "node",
+    "expr": "sign(42)",
+    "context": {},
+    "expected": 1
+  },
+  {
+    "id": "math_sign_neg",
+    "type": "node",
+    "expr": "sign(-15)",
+    "context": {},
+    "expected": -1
+  },
+  {
+    "id": "math_ease_inquad",
+    "type": "node",
+    "expr": "ease('inQuad', 0.5)",
+    "context": {},
+    "expected": 0.25
+  },
+  {
+    "id": "math_ease_linear",
+    "type": "node",
+    "expr": "ease('linear', 0.75)",
+    "context": {},
+    "expected": 0.75
+  },
+  {
+    "id": "math_ease_args_flipped",
+    "type": "node",
+    "expr": "ease(0.5, 'inQuad')",
+    "context": {},
+    "expected": 0.25
+  },
+  {
+    "id": "elem_prop_read",
+    "type": "node",
+    "expr": "prop('player_bg', 'width') + 10",
+    "context": {
+      "player_bg": { "width": 440 }
+    },
+    "expected": 450
+  },
+  {
+    "id": "morph_basic_true",
+    "type": "node",
+    "expr": "morph(expanded, 56, 176, 'springsmooth')",
+    "context": { "expanded": 1 },
+    "expected": 176
+  },
+  {
+    "id": "morph_basic_false",
+    "type": "node",
+    "expr": "morph(expanded, 56, 176, 'springsmooth')",
+    "context": { "expanded": 0 },
+    "expected": 56
+  },
+  {
+    "id": "morph_default_motion",
+    "type": "node",
+    "expr": "morph(expanded, 10, 20)",
+    "context": { "expanded": 1 },
+    "expected": 20
+  },
+  {
+    "id": "time_second_tick",
+    "type": "node",
+    "expr": "timeSecond()",
+    "context": { "second": 15 },
+    "expected": 90
+  },
+  {
+    "id": "time_minute_tick",
+    "type": "node",
+    "expr": "timeMinute()",
+    "context": { "minute": 30, "second": 0 },
+    "expected": 180
+  },
+  {
+    "id": "time_minute_smooth",
+    "type": "node",
+    "expr": "timeMinute(true)",
+    "context": { "minute": 30, "second": 30 },
+    "expected": 183
+  },
+  {
+    "id": "time_hour_tick",
+    "type": "node",
+    "expr": "timeHour()",
+    "context": { "hour": 3, "minute": 0, "second": 0 },
+    "expected": 90
+  },
+  {
+    "id": "time_hour_smooth",
+    "type": "node",
+    "expr": "timeHour(true)",
+    "context": { "hour": 3, "minute": 30, "second": 0 },
+    "expected": 105
+  },
+  {
+    "id": "time_hour24_tick",
+    "type": "node",
+    "expr": "timeHour24()",
+    "context": { "hour": 12, "minute": 0, "second": 0 },
+    "expected": 180
+  },
+  {
+    "id": "time_calc_raw",
+    "type": "node",
+    "expr": "second * 6",
+    "context": { "second": 45 },
+    "expected": 270
+  }
+]
