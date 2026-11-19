@@ -1,6 +1,8 @@
 package com.criperto.standby.editor
 
 import android.content.res.Configuration
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -30,11 +33,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -42,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.criperto.standby.StandByApplication
+import com.criperto.standby.ai.AiCutoutPanel
 import com.criperto.standby.core.SceneObject
 import com.criperto.standby.editor.canvas.EditorCanvas
 import com.criperto.standby.editor.sheets.AddObjectSheet
@@ -49,21 +58,56 @@ import com.criperto.standby.editor.sheets.InspectorSheet
 import com.criperto.standby.editor.sheets.LayersSheet
 import com.criperto.standby.editor.sheets.PresetManagerSheet
 import com.criperto.standby.editor.sheets.StateSimulatorSheet
+import com.criperto.standby.fonts.FontPickerSheet
+import com.criperto.standby.fonts.SvgAssetManager
 import com.criperto.standby.standby.StandByActivity
+import kotlinx.coroutines.launch
 
 @Composable
 fun EditorScreen(
     app: StandByApplication,
-    onOpenFontPicker: (SceneObject) -> Unit = {},
-    onImportSvgForObject: (SceneObject) -> Unit = {},
-    onMissingFontsDetected: (List<String>) -> Unit = {},
-    aiCutoutPanel: @Composable (SceneObject?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val viewModel = app.editorController
     val ui by viewModel.uiState.collectAsState()
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    var fontPickerTarget by remember { mutableStateOf<SceneObject?>(null) }
+    var svgPickerTargetId by remember { mutableStateOf<String?>(null) }
+    var missingFontIds by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val svgLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        val objId = svgPickerTargetId
+        svgPickerTargetId = null
+        if (uri == null || objId == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            SvgAssetManager.importSvgFromUri(context, uri).onSuccess { file ->
+                app.assetCache.invalidateFontAndSvgCache()
+                viewModel.updateObjectImmediate(objId) { it.copy(svgSource = file.name) }
+            }
+        }
+    }
+
+    val onOpenFontPicker: (SceneObject) -> Unit = { obj -> fontPickerTarget = obj }
+    val onImportSvgForObject: (SceneObject) -> Unit = { obj ->
+        svgPickerTargetId = obj.id
+        svgLauncher.launch("*/*")
+    }
+    val onMissingFontsDetected: (List<String>) -> Unit = { ids ->
+        missingFontIds = ids
+    }
+    val aiCutoutPanel: @Composable (SceneObject?) -> Unit = { obj ->
+        AiCutoutPanel(
+            app = app,
+            selectedObject = obj,
+            downloader = app.modelDownloader,
+            onCutoutGenerated = {},
+        )
+    }
 
     DisposableEffect(Unit) {
         app.signalProvider.acquireRenderConsumer()
@@ -134,6 +178,59 @@ fun EditorScreen(
                 }
             }
         }
+    }
+
+    fontPickerTarget?.let { targetObj ->
+        FontPickerSheet(
+            app = app,
+            targetObject = targetObj,
+            fontsourceRepository = app.fontsourceRepository,
+            onDismiss = { fontPickerTarget = null },
+            onApplyFont = { family, fileName, sourceId ->
+                viewModel.updateObjectImmediate(targetObj.id) {
+                    it.copy(
+                        customFontFamily = family,
+                        fontFileName = fileName,
+                        fontSourceId = sourceId,
+                        useSystemFont = fileName == null && sourceId == null,
+                    )
+                }
+                fontPickerTarget = null
+            },
+        )
+    }
+
+    if (missingFontIds.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { missingFontIds = emptyList() },
+            title = { Text("Fuentes Fontsource faltantes") },
+            text = {
+                Text(
+                    "El preset importado referencia fuentes de Fontsource que no están descargadas aún: ${missingFontIds.joinToString(", ")}. ¿Querés descargarlas ahora automáticamente?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDownload = missingFontIds
+                        missingFontIds = emptyList()
+                        scope.launch {
+                            for (fid in toDownload) {
+                                app.fontsourceRepository.downloadFont(fid)
+                            }
+                            app.assetCache.invalidateFontAndSvgCache()
+                        }
+                    },
+                ) {
+                    Text("Descargar todas")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { missingFontIds = emptyList() }) {
+                    Text("Omitir")
+                }
+            },
+        )
     }
 }
 

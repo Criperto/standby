@@ -12,14 +12,8 @@ UNIFFI_OUT="$ANDROID_DIR/app/src/main/java"
 
 mkdir -p "$JNI_DIR" "$UNIFFI_OUT" "$ROOT_DIR/dist"
 
-echo "==> Building Rust standby-core for aarch64-linux-android (16KB page-aligned)..."
-CARGO_FLAGS=()
-if [ "$BUILD_TYPE" = "release" ]; then
-  CARGO_FLAGS+=(--release)
-  RUST_PROFILE="release"
-else
-  RUST_PROFILE="debug"
-fi
+echo "==> Building Rust standby-core for aarch64-linux-android (16KB page-aligned, release-optimized)..."
+CARGO_FLAGS=(--release)
 
 pushd "$RUST_DIR" >/dev/null
 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384" \

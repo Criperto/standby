@@ -194,8 +194,11 @@ class SceneAssetCache(private val context: Context) {
         typefaceCache[key]?.let { return it }
 
         val customFile = obj.fontFileName?.takeIf { it.isNotBlank() }?.let { fn ->
-            File(context.filesDir, "fonts/imported/$fn").takeIf { it.exists() }
+            File(fn).takeIf { it.isAbsolute && it.exists() }
+                ?: File(context.filesDir, "fonts/imported/$fn").takeIf { it.exists() }
                 ?: File(context.filesDir, "fonts/downloaded/$fn").takeIf { it.exists() }
+                ?: File("/system/fonts/$fn").takeIf { it.exists() }
+                ?: File("/product/fonts/$fn").takeIf { it.exists() }
         } ?: obj.fontSourceId?.takeIf { it.isNotBlank() }?.let { fid ->
             File(context.filesDir, "fonts/downloaded/${fid}.ttf").takeIf { it.exists() }
         }
@@ -230,5 +233,10 @@ class SceneAssetCache(private val context: Context) {
         } else null
         svgCache[assetName] = svg
         return svg
+    }
+
+    fun invalidateFontAndSvgCache() {
+        typefaceCache.clear()
+        svgCache.clear()
     }
 }

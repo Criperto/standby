@@ -1,10 +1,12 @@
 package com.criperto.standby
 
 import android.app.Application
+import com.criperto.standby.ai.ModelDownloader
 import com.criperto.standby.core.DeviceSignalProvider
 import com.criperto.standby.core.PresetRepository
 import com.criperto.standby.core.SettingsRepository
 import com.criperto.standby.editor.EditorViewModel
+import com.criperto.standby.fonts.FontsourceRepository
 import com.criperto.standby.renderer.SceneAssetCache
 import com.criperto.standby.renderer.ShaderRegistry
 import com.criperto.standby.smarthome.SmartHomeRepository
@@ -29,6 +31,8 @@ class StandByApplication : Application() {
         SmartHomeViewModel(this, smartHomeRepository, signalProvider)
     }
     val editorController: EditorViewModel by lazy { EditorViewModel(this) }
+    val fontsourceRepository: FontsourceRepository by lazy { FontsourceRepository(this) }
+    val modelDownloader: ModelDownloader by lazy { ModelDownloader(this) }
     val shaderRegistry: ShaderRegistry by lazy { ShaderRegistry(this) }
     val assetCache: SceneAssetCache by lazy { SceneAssetCache(this) }
 
