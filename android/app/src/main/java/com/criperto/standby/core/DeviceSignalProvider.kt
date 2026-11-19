@@ -132,15 +132,15 @@ class DeviceSignalProvider(
         .readTimeout(6, TimeUnit.SECONDS)
         .build()
 
+    private val dateFmt = SimpleDateFormat("EEEE, d 'de' MMMM", Locale("es", "AR"))
+    private val datetimeFmt = SimpleDateFormat("dd/MM HH:mm", Locale("es", "AR"))
+
     private val _signals = MutableStateFlow(buildInitialSignals())
     val signals: StateFlow<DeviceSignals> = _signals.asStateFlow()
 
     private val _tickMode = MutableStateFlow(TickMode.MINUTE_ONLY)
     private val _activeConsumers = MutableStateFlow(0)
     private val _sensorsActive = MutableStateFlow(false)
-
-    private val dateFmt = SimpleDateFormat("EEEE, d 'de' MMMM", Locale("es", "AR"))
-    private val datetimeFmt = SimpleDateFormat("dd/MM HH:mm", Locale("es", "AR"))
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
