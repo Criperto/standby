@@ -38,8 +38,9 @@ pushd "$ANDROID_DIR" >/dev/null
 export STANDBY_SKIP_GRADLE_RUST=1
 if [ "$BUILD_TYPE" = "release" ]; then
   ./gradlew assembleRelease --no-daemon
-  cp -f "$ANDROID_DIR/app/build/outputs/apk/release/app-release-unsigned.apk" "$ROOT_DIR/dist/standby-release.apk" 2>/dev/null || \
-    cp -f "$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk" "$ROOT_DIR/dist/standby-release.apk"
+  cp -f "$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk" "$ROOT_DIR/dist/standby-release.apk" 2>/dev/null || \
+    cp -f "$ANDROID_DIR/app/build/outputs/apk/release/app-release-unsigned.apk" "$ROOT_DIR/dist/standby-release.apk"
+  cp -f "$ROOT_DIR/dist/standby-release.apk" "$ROOT_DIR/dist/standby-debug.apk"
 else
   ./gradlew assembleDebug --no-daemon
   cp -f "$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk" "$ROOT_DIR/dist/standby-debug.apk"

@@ -107,9 +107,14 @@ fun PresetManagerSheet(
             app.presetRepository.exportStandbyZip(uiState.presetId)
                 .onSuccess { zipBytes ->
                     runCatching {
-                        context.contentResolver.openOutputStream(uri)?.use { it.write(zipBytes) }
+                        val out = context.contentResolver.openOutputStream(uri)
+                            ?: error("No se pudo abrir el archivo de destino")
+                        out.use { it.write(zipBytes) }
+                    }.onSuccess {
+                        statusText = "Paquete .standby exportado (${zipBytes.size / 1024} KB)"
+                    }.onFailure { ioErr ->
+                        statusText = "Error escribiendo archivo: ${ioErr.message}"
                     }
-                    statusText = "Paquete .standby exportado (${zipBytes.size / 1024} KB)"
                 }
                 .onFailure { err ->
                     statusText = "Error exportando .standby: ${err.message}"
@@ -165,6 +170,17 @@ fun PresetManagerSheet(
                 Icon(Icons.Rounded.FileUpload, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("Exportar .standby")
+            }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val count = app.presetRepository.restoreBuiltinPresets().size
+                        viewModel.loadPresetIntoEditor(app.presetRepository.activePresetIdFlow.value)
+                        statusText = "Presets de fábrica restaurados ($count disponibles)"
+                    }
+                },
+            ) {
+                Text("Restaurar fábrica")
             }
         }
 

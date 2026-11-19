@@ -293,9 +293,15 @@ class SmartHomeViewModel(
             }
         }
         scope.launch {
+            var firstSync = true
             while (true) {
-                refreshAllStates()
-                delay(8_000L)
+                if (firstSync || signalProvider.hasActiveConsumers()) {
+                    firstSync = false
+                    refreshAllStates()
+                    delay(8_000L)
+                } else {
+                    delay(15_000L)
+                }
             }
         }
     }
@@ -327,6 +333,9 @@ class SmartHomeViewModel(
                 "shelly", "tasmota" -> MultiBrandDrivers.probeShellyOrTasmota(
                     dev.ip, dev.driver, dev.name, dev.category
                 ).getOrNull()?.second
+                "yeelight" -> MultiBrandDrivers.probeYeelight(
+                    dev.ip, dev.name, dev.room
+                ).getOrNull()?.second
                 "wiz" -> runCatching {
                     AppJson.decodeFromString<SmartDeviceStateDto>(
                         wizGetStateJson(dev.ip, dev.port.toUShort())
@@ -340,7 +349,7 @@ class SmartHomeViewModel(
         if (state != null) {
             nextStates[dev.id] = state
             nextReach[dev.id] = true
-        } else if (dev.driver == "wiz") {
+        } else if (dev.driver in listOf("wiz", "wled", "shelly", "tasmota", "yeelight")) {
             nextReach[dev.id] = false
         }
         _uiState.value = _uiState.value.copy(
@@ -354,7 +363,7 @@ class SmartHomeViewModel(
         scope.launch {
             _uiState.value = _uiState.value.copy(
                 discovering = true,
-                statusMessage = "Buscando dispositivos inteligentes y Home Assistant en Wi-Fi...",
+                statusMessage = "Buscando dispositivos WiZ, WLED, Shelly, Tasmota, Yeelight y Home Assistant...",
                 errorMessage = null,
             )
             val prefix = extractWifiSubnetPrefix()
@@ -375,8 +384,14 @@ class SmartHomeViewModel(
                         AppJson.decodeFromString<List<SmartDeviceInfoDto>>(raw)
                     }.getOrDefault(emptyList())
 
+                    val yeelightList = MultiBrandDrivers.discoverYeelightSsdp()
+                    val httpList = if (sweepSubnet) {
+                        MultiBrandDrivers.discoverHttpSmartDevicesOnSubnet(prefix)
+                    } else {
+                        emptyList()
+                    }
                     val detectedHa = MultiBrandDrivers.discoverHomeAssistantUrl(prefix)
-                    wizList to detectedHa
+                    Triple(wizList, yeelightList + httpList, detectedHa)
                 } finally {
                     runCatching {
                         if (lock?.isHeld == true) lock.release()
@@ -384,10 +399,10 @@ class SmartHomeViewModel(
                 }
             }
 
-            val (found, detectedHa) = result
+            val (foundWiz, foundOthers, detectedHa) = result
             val nextStates = _uiState.value.statesByDeviceId.toMutableMap()
             val nextReach = _uiState.value.reachableByDeviceId.toMutableMap()
-            for (item in found) {
+            for (item in foundWiz) {
                 val existing = _uiState.value.devices.firstOrNull {
                     (it.mac.isNotBlank() && it.mac == item.mac) || it.ip == item.ip
                 }
@@ -409,14 +424,33 @@ class SmartHomeViewModel(
                 nextStates[cfg.id] = item.state
                 nextReach[cfg.id] = true
             }
+            for ((otherCfg, otherSt) in foundOthers) {
+                val existing = _uiState.value.devices.firstOrNull {
+                    it.id == otherCfg.id || it.ip == otherCfg.ip
+                }
+                val merged = if (existing != null) {
+                    otherCfg.copy(
+                        id = existing.id,
+                        name = existing.name,
+                        room = existing.room,
+                        isFavorite = existing.isFavorite,
+                    )
+                } else {
+                    otherCfg
+                }
+                repository.upsertDevice(merged)
+                nextStates[merged.id] = otherSt
+                nextReach[merged.id] = true
+            }
 
+            val totalFound = foundWiz.size + foundOthers.size
             val haNote = if (detectedHa != null) " · Home Assistant detectado en $detectedHa" else ""
             _uiState.value = _uiState.value.copy(
                 discovering = false,
                 detectedHaUrl = detectedHa ?: _uiState.value.detectedHaUrl,
                 statesByDeviceId = nextStates,
                 reachableByDeviceId = nextReach,
-                statusMessage = "${found.size} lámpara(s) WiZ encontrada(s)$haNote",
+                statusMessage = "$totalFound dispositivo(s) encontrados en red local$haNote",
             )
             syncPrimaryDeviceSignal()
         }
@@ -1001,21 +1035,63 @@ class SmartHomeViewModel(
         )
     }
 
+    private fun toStatusForSignal(dev: WizDeviceConfig, state: SmartDeviceStateDto): PrimaryWizStatus {
+        val valLabel = if (!state.isOn) {
+            "OFF"
+        } else {
+            when (dev.category) {
+                "ac" -> "${state.targetTempC ?: state.brightness}°C"
+                "tv" -> if (state.isMuted) "MUTE" else "%${state.volumePct ?: state.brightness}"
+                "switch" -> "ON"
+                else -> "%${state.brightness}"
+            }
+        }
+        val modeLabel = when (dev.category) {
+            "ac" -> state.hvacMode ?: "Clima"
+            "tv" -> state.tvSource ?: "Smart TV"
+            "switch" -> if (state.isOn) "Activo" else "Apagado"
+            else -> WizColorMath.stateModeLabel(state)
+        }
+        val sliderDim = when (dev.category) {
+            "ac" -> {
+                val t = (state.targetTempC ?: state.brightness).coerceIn(16, 30)
+                (((t - 16) / 14f) * 100f).roundToInt().coerceIn(10, 100)
+            }
+            "tv" -> (state.volumePct ?: state.brightness).coerceIn(10, 100)
+            "switch" -> if (state.isOn) 100 else 10
+            else -> state.brightness.coerceIn(10, 100)
+        }
+        return PrimaryWizStatus(
+            isOn = state.isOn,
+            dimming = sliderDim,
+            name = dev.name,
+            hex = WizColorMath.stateToHex(state),
+            room = dev.room,
+            category = dev.category,
+            modeLabel = modeLabel,
+            valueLabel = valLabel,
+        )
+    }
+
     private fun syncPrimaryDeviceSignal() {
-        val primary = _uiState.value.devices.firstOrNull { it.isFavorite } ?: _uiState.value.devices.firstOrNull()
+        val allDevices = _uiState.value.devices
+        val primary = allDevices.firstOrNull { it.isFavorite } ?: allDevices.firstOrNull()
         if (primary == null) {
-            signalProvider.updateWizStatus(PrimaryWizStatus())
+            signalProvider.updateWizStatus(PrimaryWizStatus(), emptyMap())
             return
         }
-        val state = _uiState.value.statesByDeviceId[primary.id] ?: SmartDeviceStateDto()
-        signalProvider.updateWizStatus(
-            PrimaryWizStatus(
-                isOn = state.isOn,
-                dimming = state.brightness,
-                name = primary.name,
-                hex = WizColorMath.stateToHex(state),
-            )
-        )
+        val byId = mutableMapOf<String, PrimaryWizStatus>()
+        for (dev in allDevices) {
+            val st = _uiState.value.statesByDeviceId[dev.id] ?: SmartDeviceStateDto()
+            val status = toStatusForSignal(dev, st)
+            byId[dev.id] = status
+            byId[dev.name] = status
+            if (dev.ip.isNotBlank()) byId[dev.ip] = status
+            if (dev.entityId.isNotBlank()) byId[dev.entityId] = status
+        }
+        val primaryStatus = byId[primary.id] ?: toStatusForSignal(primary, SmartDeviceStateDto())
+        byId["primary"] = primaryStatus
+        signalProvider.updateWizStatus(primaryStatus, byId)
     }
 
     private fun extractWifiSubnetPrefix(): String? {

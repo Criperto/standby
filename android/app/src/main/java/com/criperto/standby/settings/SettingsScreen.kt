@@ -582,7 +582,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = "Autor: Criperto · Versión 0.3.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
+                    text = "Autor: Criperto · Versión 0.4.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

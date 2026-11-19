@@ -20,12 +20,15 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,11 +41,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.criperto.standby.StandByApplication
+import com.criperto.standby.standby.MediaBridge
+import kotlinx.coroutines.launch
 
 @Composable
 fun SmartHomeHubOverlay(
@@ -55,9 +61,12 @@ fun SmartHomeHubOverlay(
     val controller = app.smartHomeController
     val ui by controller.uiState.collectAsState()
     val signals by app.signalProvider.signals.collectAsState()
+    val activePresetId by app.presetRepository.activePresetIdFlow.collectAsState()
+    val scope = rememberCoroutineScope()
 
     var editingDeviceId by remember { mutableStateOf<String?>(null) }
     var showAddIp by remember { mutableStateOf(false) }
+    var wizSunrise by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         controller.refreshAllStates()
@@ -169,6 +178,79 @@ fun SmartHomeHubOverlay(
                             label = { Text(fav.name) },
                         )
                     }
+                }
+            }
+
+            // Temporizador / Pomodoro con Amanecer WiZ + Cambio rápido de Preset
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AssistChip(
+                    onClick = {
+                        onInteractionPing()
+                        scope.launch { app.presetRepository.cycleActivePreset(-1) }
+                    },
+                    label = { Text("‹ Preset") },
+                )
+                AssistChip(
+                    onClick = {
+                        onInteractionPing()
+                        scope.launch { app.presetRepository.cycleActivePreset(1) }
+                    },
+                    label = { Text("$activePresetId ›") },
+                )
+                if (signals.timer.isActive) {
+                    AssistChip(
+                        onClick = {
+                            onInteractionPing()
+                            MediaBridge.cancelTimer()
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        label = { Text("${signals.timer.label} · ${signals.timer.formattedRemaining} (Cancelar)") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                        ),
+                    )
+                } else {
+                    listOf(
+                        5 to "⏱ 5m",
+                        15 to "⏱ 15m",
+                        25 to "🍅 25m Pomodoro",
+                        45 to "⏱ 45m",
+                    ).forEach { (mins, label) ->
+                        AssistChip(
+                            onClick = {
+                                onInteractionPing()
+                                MediaBridge.startTimer(
+                                    minutes = mins,
+                                    label = if (mins == 25) "Pomodoro" else "${mins}m",
+                                    wizSunriseEnabled = wizSunrise,
+                                    onSunriseStep = { bri ->
+                                        val primaryId = ui.devices.firstOrNull()?.id ?: return@startTimer
+                                        controller.setTempKelvin(primaryId, 3000, bri)
+                                    },
+                                )
+                            },
+                            label = { Text(label) },
+                        )
+                    }
+                    FilterChip(
+                        selected = wizSunrise,
+                        onClick = {
+                            onInteractionPing()
+                            wizSunrise = !wizSunrise
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.WbSunny, contentDescription = null)
+                        },
+                        label = { Text("Amanecer WiZ") },
+                    )
                 }
             }
 

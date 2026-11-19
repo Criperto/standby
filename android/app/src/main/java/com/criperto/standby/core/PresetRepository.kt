@@ -72,6 +72,30 @@ class PresetRepository(
         return forceRefreshBuiltins
     }
 
+    suspend fun restoreBuiltinPresets(): List<String> = withContext(Dispatchers.IO) {
+        for (fileName in builtinFiles) {
+            val dst = File(presetsDir, fileName)
+            runCatching {
+                context.assets.open("presets/$fileName").use { input ->
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+        }
+        val list = refreshList()
+        loadAndActivate(_activePresetId.value.ifBlank { "iphone_1_v2" })
+        list
+    }
+
+    suspend fun cycleActivePreset(delta: Int): String = withContext(Dispatchers.IO) {
+        val list = _presetIds.value.ifEmpty { refreshList() }
+        if (list.isEmpty()) return@withContext _activePresetId.value
+        val curIdx = list.indexOf(_activePresetId.value).takeIf { it >= 0 } ?: 0
+        val nextIdx = ((curIdx + delta) % list.size + list.size) % list.size
+        val nextId = list[nextIdx]
+        loadAndActivate(nextId)
+        nextId
+    }
+
     private fun presetFile(id: String): File {
         val safe = id.replace(Regex("[^A-Za-z0-9_\\-]"), "_")
         return File(presetsDir, "$safe.json")

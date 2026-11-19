@@ -432,4 +432,32 @@ data class PrimaryWizStatus(
     val dimming: Int = 100,
     val name: String = "WiZ",
     val hex: String = "#ffffff",
+    val room: String = "Escritorio",
+    val category: String = "light",
+    val modeLabel: String = "",
+    val valueLabel: String = "",
 )
+
+data class NotificationSnapshot(
+    val activeCount: Int = 0,
+    val lastTitle: String = "",
+    val lastText: String = "",
+    val lastPackage: String = "",
+    val lastPostedEpochMs: Long = 0L,
+)
+
+data class TimerSnapshot(
+    val isActive: Boolean = false,
+    val label: String = "Pomodoro",
+    val remainingSec: Int = 0,
+    val totalSec: Int = 0,
+    val wizSunriseEnabled: Boolean = true,
+    val finishedAlertEpochMs: Long = 0L,
+) {
+    val formattedRemaining: String
+        get() {
+            val m = (remainingSec / 60).coerceAtLeast(0)
+            val s = (remainingSec % 60).coerceAtLeast(0)
+            return "%02d:%02d".format(m, s)
+        }
+}

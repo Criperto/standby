@@ -59,6 +59,9 @@ data class DeviceSignals(
     val weatherCondition: String = "Despejado",
     val weatherHighLow: String = "H:27° L:15°",
     val wizStatus: PrimaryWizStatus = PrimaryWizStatus(),
+    val smartDevicesById: Map<String, PrimaryWizStatus> = emptyMap(),
+    val notifications: NotificationSnapshot = NotificationSnapshot(),
+    val timer: TimerSnapshot = TimerSnapshot(),
 ) {
     fun toEvalContextJson(
         scopeId: String = "@",
@@ -68,6 +71,7 @@ data class DeviceSignals(
         stateValues: Map<String, Double> = emptyMap(),
         scopeAncestors: Map<String, String> = emptyMap(),
         palette: MaterialYouPaletteDto? = null,
+        cachedPaletteJson: String? = null,
         isHovered: Boolean = false,
         isPressed: Boolean = false,
     ): String {
@@ -104,6 +108,9 @@ data class DeviceSignals(
         obj.put("wizDim", wizStatus.dimming.toDouble())
         obj.put("wizName", wizStatus.name)
         obj.put("wizHex", wizStatus.hex)
+        obj.put("notifCount", notifications.activeCount.toDouble())
+        obj.put("timerActive", timer.isActive)
+        obj.put("timerRemaining", timer.remainingSec.toDouble())
         obj.put("isHovered", isHovered)
         obj.put("isPressed", isPressed)
 
@@ -117,7 +124,9 @@ data class DeviceSignals(
             for ((k, v) in scopeAncestors) anc.put(k, v)
             obj.put("scopeAncestors", anc)
         }
-        if (palette != null) {
+        if (cachedPaletteJson != null) {
+            obj.put("palette", JSONObject(cachedPaletteJson))
+        } else if (palette != null) {
             obj.put("palette", JSONObject(AppJson.encodeToString(palette)))
         }
         return obj.toString()
@@ -153,12 +162,19 @@ class DeviceSignalProvider(
         }
     }
 
+    private var lastLuxUpdateMs = 0L
+
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
                 Sensor.TYPE_LIGHT -> {
                     val lux = event.values.firstOrNull() ?: return
-                    _signals.value = _signals.value.copy(ambientLux = lux)
+                    val now = System.currentTimeMillis()
+                    val prev = _signals.value.ambientLux
+                    if (prev == null || (now - lastLuxUpdateMs >= 450L && abs(lux - prev) >= 1.5f)) {
+                        lastLuxUpdateMs = now
+                        _signals.value = _signals.value.copy(ambientLux = lux)
+                    }
                 }
                 Sensor.TYPE_ACCELEROMETER -> {
                     val ax = abs(event.values[0])
@@ -183,6 +199,7 @@ class DeviceSignalProvider(
     init {
         registerBattery()
         observeMedia()
+        observeNotificationsAndTimer()
         observePresetTickMode()
         observeClockLoop()
         observeWeather()
@@ -232,7 +249,26 @@ class DeviceSignalProvider(
     private fun observeMedia() {
         scope.launch {
             MediaBridge.mediaState.collect { m ->
-                _signals.value = _signals.value.copy(media = m)
+                if (_signals.value.media != m) {
+                    _signals.value = _signals.value.copy(media = m)
+                }
+            }
+        }
+    }
+
+    private fun observeNotificationsAndTimer() {
+        scope.launch {
+            MediaBridge.notificationState.collect { n ->
+                if (_signals.value.notifications != n) {
+                    _signals.value = _signals.value.copy(notifications = n)
+                }
+            }
+        }
+        scope.launch {
+            MediaBridge.timerState.collect { t ->
+                if (_signals.value.timer != t) {
+                    _signals.value = _signals.value.copy(timer = t)
+                }
             }
         }
     }
@@ -314,9 +350,21 @@ class DeviceSignalProvider(
                     }
                 }
 
+                var consecutiveFailures = 0
                 while (isActive) {
-                    fetchOpenMeteo(activeLat, activeLon, activeCity)
-                    delay(20 * 60_000L)
+                    val ok = fetchOpenMeteo(activeLat, activeLon, activeCity)
+                    val waitMs = if (ok) {
+                        consecutiveFailures = 0
+                        20 * 60_000L
+                    } else {
+                        consecutiveFailures += 1
+                        when (consecutiveFailures) {
+                            1 -> 15_000L
+                            2 -> 60_000L
+                            else -> 5 * 60_000L
+                        }
+                    }
+                    delay(waitMs)
                 }
             }
         }
@@ -358,16 +406,16 @@ class DeviceSignalProvider(
         return null
     }
 
-    private fun fetchOpenMeteo(lat: Double, lon: Double, city: String) {
+    private fun fetchOpenMeteo(lat: Double, lon: Double, city: String): Boolean {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
-        runCatching {
+        return runCatching {
             val req = Request.Builder().url(url).build()
             httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return
-                val body = resp.body?.string() ?: return
+                if (!resp.isSuccessful) return false
+                val body = resp.body?.string() ?: return false
                 val root = JSONObject(body)
-                val cur = root.optJSONObject("current") ?: return
+                val cur = root.optJSONObject("current") ?: return false
                 val temp = cur.optDouble("temperature_2m", Double.NaN)
                 val code = cur.optInt("weather_code", 0)
 
@@ -391,9 +439,11 @@ class DeviceSignalProvider(
                         weatherCondition = weatherCodeToLabelEs(code),
                         weatherHighLow = hl,
                     )
+                    return true
                 }
+                false
             }
-        }
+        }.getOrDefault(false)
     }
 
     private fun weatherCodeToLabelEs(code: Int): String = when (code) {
@@ -409,9 +459,16 @@ class DeviceSignalProvider(
         else -> "Soleado"
     }
 
-    fun updateWizStatus(status: PrimaryWizStatus) {
-        _signals.value = _signals.value.copy(wizStatus = status)
+    fun updateWizStatus(status: PrimaryWizStatus, byId: Map<String, PrimaryWizStatus> = _signals.value.smartDevicesById) {
+        if (_signals.value.wizStatus != status || _signals.value.smartDevicesById != byId) {
+            _signals.value = _signals.value.copy(
+                wizStatus = status,
+                smartDevicesById = byId,
+            )
+        }
     }
+
+    fun hasActiveConsumers(): Boolean = _activeConsumers.value > 0
 
     fun setSensorsActive(active: Boolean) {
         if (_sensorsActive.value == active) return

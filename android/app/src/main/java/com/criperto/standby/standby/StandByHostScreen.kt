@@ -6,6 +6,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,11 +19,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,22 +36,28 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -59,6 +72,7 @@ import com.criperto.standby.renderer.SceneRenderer
 import com.criperto.standby.smarthome.SmartHomeHubOverlay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import uniffi.standby_core.evaluateStandbyRulesJson
 import kotlin.math.roundToInt
 
@@ -92,7 +106,26 @@ fun StandByHostScreen(
 
     val settings by app.settingsRepository.settingsFlow.collectAsState(initial = AppSettings())
     val preset by app.presetRepository.activePresetFlow.collectAsState()
+    val activePresetId by app.presetRepository.activePresetIdFlow.collectAsState()
+    val presetIds by app.presetRepository.presetIdsFlow.collectAsState()
     val signals by app.signalProvider.signals.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var showPresetIndicator by remember { mutableStateOf(false) }
+    LaunchedEffect(activePresetId) {
+        showPresetIndicator = true
+        delay(2500L)
+        showPresetIndicator = false
+    }
+
+    var showNotifBanner by remember { mutableStateOf(false) }
+    LaunchedEffect(signals.notifications.lastPostedEpochMs) {
+        if (signals.notifications.lastPostedEpochMs > 0L && signals.notifications.lastTitle.isNotBlank()) {
+            showNotifBanner = true
+            delay(8_000L)
+            showNotifBanner = false
+        }
+    }
 
     // Exit StandBy automatically when physically rotated to vertical (portrait)
     LaunchedEffect(signals.isLandscape, settings.orientationReq) {
@@ -134,7 +167,17 @@ fun StandByHostScreen(
         )
     }
 
-    LaunchedEffect(settings, signals, presenceState, hubOpen, manualLaunch) {
+    LaunchedEffect(
+        settings,
+        signals.localMinuteOfDay,
+        signals.isCharging,
+        signals.chargeSource,
+        signals.isLandscape,
+        signals.ambientLux,
+        presenceState,
+        hubOpen,
+        manualLaunch,
+    ) {
         val rulesJson = runCatching { AppJson.encodeToString(settings.toTriggerRulesDto()) }.getOrNull()
         val snapshot = TriggerSnapshotDto(
             isCharging = signals.isCharging,
@@ -313,6 +356,159 @@ fun StandByHostScreen(
                         )
                     },
             )
+
+            // Top floating pill for Active Timer / Pomodoro or Live Notification Banner
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                AnimatedVisibility(visible = signals.timer.isActive, enter = fadeIn(), exit = fadeOut()) {
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "${signals.timer.label} · ${signals.timer.formattedRemaining}",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "✕",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { MediaBridge.cancelTimer() }
+                                    .padding(horizontal = 4.dp),
+                            )
+                        }
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showNotifBanner && !hubOpen && signals.notifications.lastTitle.isNotBlank(),
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .widthIn(max = 520.dp)
+                            .clickable { showNotifBanner = false },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = signals.notifications.lastTitle,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (signals.notifications.lastText.isNotBlank()) {
+                                    Text(
+                                        text = signals.notifications.lastText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom swipe zone + Auto-fading Preset Carousel Page Dots (iOS StandBy style)
+            var swipeAccum by remember { mutableFloatStateOf(0f) }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .pointerInput(presetIds) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                swipeAccum = 0f
+                                showPresetIndicator = true
+                            },
+                            onDragEnd = {
+                                if (swipeAccum <= -70f) {
+                                    scope.launch { app.presetRepository.cycleActivePreset(1) }
+                                } else if (swipeAccum >= 70f) {
+                                    scope.launch { app.presetRepository.cycleActivePreset(-1) }
+                                }
+                                swipeAccum = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                swipeAccum += dragAmount
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                AnimatedVisibility(
+                    visible = showPresetIndicator && !hubOpen && presetIds.size > 1,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            presetIds.forEach { pid ->
+                                val active = pid == activePresetId
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (active) 7.dp else 5.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (active) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                            }
+                                        ),
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = activePresetId,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
 
             AnimatedVisibility(
                 visible = hubOpen,

@@ -62,6 +62,7 @@ fun InspectorSheet(
     val context = LocalContext.current
     val primary = uiState.primarySelectedObject
     val shaders by app.shaderRegistry.shadersFlow.collectAsState()
+    var inspectorNotice by remember { mutableStateOf<String?>(null) }
 
     val wallpaperPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -70,10 +71,16 @@ fun InspectorSheet(
         runCatching {
             val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
             val dst = File(dir, "wp_${System.currentTimeMillis()}.jpg")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                dst.outputStream().use { out -> input.copyTo(out) }
+            val input = context.contentResolver.openInputStream(uri)
+                ?: error("No se pudo abrir la imagen seleccionada")
+            input.use { inp ->
+                dst.outputStream().use { out -> inp.copyTo(out) }
             }
             viewModel.updateBackgroundDebounced { it.copy(mode = "wallpaper", wallpaperUri = dst.absolutePath) }
+        }.onSuccess {
+            inspectorNotice = "Wallpaper importado y aplicado"
+        }.onFailure { err ->
+            inspectorNotice = "Error importando wallpaper: ${err.message}"
         }
     }
 
@@ -83,13 +90,17 @@ fun InspectorSheet(
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
             val src = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: return@runCatching
+                ?: error("No se pudo leer el archivo .agsl")
             val name = uri.lastPathSegment?.substringBeforeLast('.') ?: "custom_agsl"
-            app.shaderRegistry.importCustomShader(name, src).onSuccess { desc ->
+            app.shaderRegistry.importCustomShader(name, src).getOrThrow().also { desc ->
                 if (primary != null) {
                     viewModel.updateObjectImmediate(primary.id) { it.copy(shaderId = desc.id) }
                 }
             }
+        }.onSuccess { desc ->
+            inspectorNotice = "Shader AGSL '${desc.displayName}' compilado y aplicado"
+        }.onFailure { err ->
+            inspectorNotice = "Error en shader AGSL: ${err.message}"
         }
     }
 
@@ -114,6 +125,15 @@ fun InspectorSheet(
         }
 
         Spacer(Modifier.height(6.dp))
+
+        inspectorNotice?.let { msg ->
+            Text(
+                text = msg,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (msg.startsWith("Error")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -905,6 +925,9 @@ private fun TextSection(
                 "\$TITLE",
                 "\$ARTIST",
                 "\$WEATHER_TEMP",
+                "\$TIMER_TEXT",
+                "\$NOTIF_COUNT",
+                "\$LAST_NOTIF",
                 "\${regexReplace(\$TITLE, \"(?i)\\\\s*\\\\(official.*\\\\)\", \"\")}",
             ).forEach { token ->
                 AssistChip(
@@ -923,7 +946,10 @@ private fun TextSection(
         HorizontalDivider()
         Text("Icono Material You o archivo .SVG", style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("bolt", "bedtime", "lightbulb", "music", "sunny", "cloud", "battery").forEach { ic ->
+            listOf(
+                "bolt", "bedtime", "lightbulb", "music", "sunny", "cloud", "battery",
+                "tv", "ac_unit", "thermostat", "fan", "power", "wifi", "home", "alarm", "timer", "notifications"
+            ).forEach { ic ->
                 FilterChip(
                     selected = obj.svgSource.isNullOrBlank() && obj.iconName == ic,
                     onClick = {
@@ -962,7 +988,7 @@ private fun TextSection(
                 titleBuf = it
                 viewModel.updateObjectDebounced(obj.id) { o -> o.copy(wizTitleTemplate = it) }
             },
-            label = { Text("Título (\$WIZ_NAME, \$WIZ_ON, \$WIZ_DIM)") },
+            label = { Text("Título (\$WIZ_NAME, \$WIZ_ROOM, \$WIZ_MODE, \$WIZ_ON, \$WIZ_DIM)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -972,7 +998,7 @@ private fun TextSection(
                 subBuf = it
                 viewModel.updateObjectDebounced(obj.id) { o -> o.copy(wizSubtitleTemplate = it) }
             },
-            label = { Text("Subtítulo (vacío para ocultar)") },
+            label = { Text("Subtítulo (\$WIZ_ROOM, \$WIZ_MODE, vacío para ocultar)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -981,7 +1007,7 @@ private fun TextSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Mostrar % / OFF a la derecha")
+            Text("Mostrar % / °C / OFF a la derecha")
             Switch(
                 checked = obj.wizShowPercent,
                 onCheckedChange = { en ->
@@ -1001,6 +1027,19 @@ private fun TextSection(
                     viewModel.updateObjectImmediate(obj.id) { it.copy(wizShowIcon = en) }
                 },
             )
+        }
+        if (obj.wizShowIcon) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("lightbulb", "tv", "ac_unit", "thermostat", "fan", "power", "bedtime", "home").forEach { ic ->
+                    FilterChip(
+                        selected = obj.iconName == ic,
+                        onClick = {
+                            viewModel.updateObjectImmediate(obj.id) { it.copy(iconName = ic) }
+                        },
+                        label = { Text(ic) },
+                    )
+                }
+            }
         }
     }
 }

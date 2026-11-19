@@ -18,6 +18,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Callable
@@ -361,17 +364,177 @@ object MultiBrandDrivers {
     }
 
     // =========================================================================
-    // 4. YEELIGHT LOCAL TCP DRIVER (:55443)
+    // 4. YEELIGHT LOCAL TCP (:55443) & SSDP (:1982) + LAN MULTI-BRAND SWEEP
     // =========================================================================
 
-    fun sendYeelightCommand(ip: String, method: String, paramsJsonArray: String): Result<Unit> = runCatching {
+    fun sendYeelightCommand(ip: String, method: String, paramsJsonArray: String): Result<String> = runCatching {
         Socket().use { socket ->
             socket.connect(InetSocketAddress(ip.trim(), 55443), 1500)
             socket.soTimeout = 1500
             val cmd = """{"id":1,"method":"$method","params":$paramsJsonArray}""" + "\r\n"
             socket.getOutputStream().write(cmd.toByteArray())
             socket.getOutputStream().flush()
-            BufferedReader(InputStreamReader(socket.getInputStream())).readLine()
+            BufferedReader(InputStreamReader(socket.getInputStream())).readLine().orEmpty()
+        }
+    }
+
+    fun probeYeelight(
+        ip: String,
+        customName: String? = null,
+        room: String = "Escritorio",
+    ): Result<Pair<WizDeviceConfig, SmartDeviceStateDto>> = runCatching {
+        val cleanIp = ip.trim()
+        val line = sendYeelightCommand(
+            cleanIp,
+            "get_prop",
+            """["power","bright","ct","rgb"]""",
+        ).getOrThrow()
+        val arr = runCatching {
+            AppJson.parseToJsonElement(line).jsonObject["result"]?.jsonArray
+        }.getOrNull()
+        val isOn = (arr?.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: "off").equals("on", ignoreCase = true)
+        val bri = (arr?.getOrNull(1)?.jsonPrimitive?.intOrNull ?: 100).coerceIn(10, 100)
+        val ct = arr?.getOrNull(2)?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }
+        val rgbInt = arr?.getOrNull(3)?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }
+        val r = rgbInt?.let { (it shr 16) and 0xFF }
+        val g = rgbInt?.let { (it shr 8) and 0xFF }
+        val b = rgbInt?.let { it and 0xFF }
+
+        val cfg = WizDeviceConfig(
+            id = "yeelight_$cleanIp",
+            name = customName?.takeIf { it.isNotBlank() } ?: "Yeelight $cleanIp",
+            ip = cleanIp,
+            port = 55443,
+            room = room,
+            driver = "yeelight",
+            category = "light",
+        )
+        val st = SmartDeviceStateDto(
+            isOn = isOn,
+            brightness = bri,
+            tempKelvin = ct,
+            r = r,
+            g = g,
+            b = b,
+        )
+        cfg to st
+    }
+
+    fun discoverYeelightSsdp(timeoutMs: Int = 850): List<Pair<WizDeviceConfig, SmartDeviceStateDto>> {
+        val found = mutableMapOf<String, Pair<WizDeviceConfig, SmartDeviceStateDto>>()
+        runCatching {
+            DatagramSocket().use { sock ->
+                sock.soTimeout = timeoutMs
+                val msg = (
+                    "M-SEARCH * HTTP/1.1\r\n" +
+                        "HOST: 239.255.255.250:1982\r\n" +
+                        "MAN: \"ssdp:discover\"\r\n" +
+                        "ST: wifi_bulb\r\n\r\n"
+                    ).toByteArray()
+                val group = InetAddress.getByName("239.255.255.250")
+                sock.send(DatagramPacket(msg, msg.size, group, 1982))
+                val buf = ByteArray(2048)
+                val endAt = System.currentTimeMillis() + timeoutMs
+                while (System.currentTimeMillis() < endAt) {
+                    val pkt = DatagramPacket(buf, buf.size)
+                    try {
+                        sock.receive(pkt)
+                    } catch (_: Throwable) {
+                        break
+                    }
+                    val txt = String(pkt.data, 0, pkt.length)
+                    val headers = txt.lines()
+                        .mapNotNull { line ->
+                            val idx = line.indexOf(':')
+                            if (idx > 0) line.substring(0, idx).trim().lowercase() to line.substring(idx + 1).trim() else null
+                        }
+                        .toMap()
+                    val loc = headers["location"] ?: continue
+                    val ip = loc.removePrefix("yeelight://").substringBefore(':').trim()
+                    if (ip.isBlank()) continue
+                    val id = headers["id"] ?: ip
+                    val name = headers["name"]?.takeIf { it.isNotBlank() } ?: "Yeelight ${id.takeLast(4)}"
+                    val isOn = headers["power"].equals("on", ignoreCase = true)
+                    val bri = headers["bright"]?.toIntOrNull()?.coerceIn(10, 100) ?: 100
+                    val cfg = WizDeviceConfig(
+                        id = "yeelight_$id",
+                        name = name,
+                        ip = ip,
+                        port = 55443,
+                        driver = "yeelight",
+                        category = "light",
+                    )
+                    found[ip] = cfg to SmartDeviceStateDto(isOn = isOn, brightness = bri)
+                }
+            }
+        }
+        return found.values.toList()
+    }
+
+    fun discoverHttpSmartDevicesOnSubnet(
+        subnetPrefix: String?,
+    ): List<Pair<WizDeviceConfig, SmartDeviceStateDto>> {
+        val prefix = subnetPrefix?.takeIf { it.count { c -> c == '.' } == 2 } ?: return emptyList()
+        val pool = Executors.newFixedThreadPool(24)
+        return try {
+            val port80Tasks = (1..254).map { host ->
+                Callable {
+                    val ip = "$prefix.$host"
+                    val sock = Socket()
+                    try {
+                        sock.connect(InetSocketAddress(ip, 80), 140)
+                        ip
+                    } catch (_: Throwable) {
+                        null
+                    } finally {
+                        runCatching { sock.close() }
+                    }
+                }
+            }
+            val openIps = pool.invokeAll(port80Tasks, 3, TimeUnit.SECONDS)
+                .mapNotNull { runCatching { it.get() }.getOrNull() }
+
+            val results = mutableListOf<Pair<WizDeviceConfig, SmartDeviceStateDto>>()
+            for (ip in openIps) {
+                // 1) Try WLED (/json)
+                val wled = probeWled(ip).getOrNull()
+                if (wled != null) {
+                    results.add(wled)
+                    continue
+                }
+                // 2) Try Shelly Gen2 (/rpc/Shelly.GetDeviceInfo)
+                val shelly = runCatching {
+                    val req = Request.Builder().url("http://$ip/rpc/Shelly.GetDeviceInfo").build()
+                    httpClient.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val obj = AppJson.parseToJsonElement(resp.body?.string().orEmpty()).jsonObject
+                            if (obj.containsKey("id") && obj.containsKey("app")) {
+                                probeShellyOrTasmota(ip, "shelly", obj["name"]?.jsonPrimitive?.contentOrNull, "switch").getOrNull()
+                            } else null
+                        } else null
+                    }
+                }.getOrNull()
+                if (shelly != null) {
+                    results.add(shelly)
+                    continue
+                }
+                // 3) Try Tasmota (/cm?cmnd=Status)
+                val tasmota = runCatching {
+                    val req = Request.Builder().url("http://$ip/cm?cmnd=Status").build()
+                    httpClient.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string().orEmpty()
+                        if (resp.isSuccessful && body.contains("\"Status\"")) {
+                            probeShellyOrTasmota(ip, "tasmota", null, "switch").getOrNull()
+                        } else null
+                    }
+                }.getOrNull()
+                if (tasmota != null) {
+                    results.add(tasmota)
+                }
+            }
+            results
+        } finally {
+            pool.shutdownNow()
         }
     }
 }

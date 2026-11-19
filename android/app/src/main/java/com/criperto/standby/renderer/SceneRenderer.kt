@@ -32,22 +32,32 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
+import androidx.compose.material.icons.rounded.Air
+import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Grain
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Power
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Thermostat
 import androidx.compose.material.icons.rounded.Thunderstorm
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -247,17 +257,37 @@ fun SceneRenderer(
         val wpMaskZ = activeWpMask?.zIndex ?: Int.MAX_VALUE
         val underObjects = mutableListOf<SceneObject>()
         val overObjects = mutableListOf<SceneObject>()
-
-        for (obj in sortedObjects) {
-            if (obj.objType == "group" || obj.objType == "wallpaper_mask" || obj.isMask) continue
-            val ctxJson = signals.toEvalContextJson(
-                scopeId = obj.groupId ?: "@",
+        val cachedPaletteJson = remember(palette) { AppJson.encodeToString(palette) }
+        val rootCtxJson by lazy {
+            signals.toEvalContextJson(
+                scopeId = "@",
                 screenW = sw.toDouble(),
                 screenH = sh.toDouble(),
                 stateValues = stateValues,
                 scopeAncestors = scopeAncestors,
                 palette = palette,
+                cachedPaletteJson = cachedPaletteJson,
             )
+        }
+
+        for (obj in sortedObjects) {
+            if (obj.objType == "group" || obj.objType == "wallpaper_mask" || obj.isMask) continue
+            val needsCtx = hasAnyExpressionsInHierarchy(obj, byId)
+            val ctxJson = if (!needsCtx) {
+                ""
+            } else if (obj.groupId == null) {
+                rootCtxJson
+            } else {
+                signals.toEvalContextJson(
+                    scopeId = obj.groupId,
+                    screenW = sw.toDouble(),
+                    screenH = sh.toDouble(),
+                    stateValues = stateValues,
+                    scopeAncestors = scopeAncestors,
+                    palette = palette,
+                    cachedPaletteJson = cachedPaletteJson,
+                )
+            }
             if (obj.visibleCondition.isNotBlank() && !evalExpressionCondition(obj.visibleCondition, ctxJson)) {
                 continue
             }
@@ -340,6 +370,21 @@ fun SceneRenderer(
             )
         }
     }
+}
+
+private fun hasAnyExpressionsInHierarchy(
+    obj: SceneObject,
+    byId: Map<String, SceneObject>,
+): Boolean {
+    var cur: SceneObject? = obj
+    var depth = 0
+    while (cur != null && depth++ < 16) {
+        if (cur.visibleCondition.isNotBlank()) return true
+        if (cur.expressions.values.any { it.isNotBlank() }) return true
+        if (cur.objType == "custom_text" && cur.customContent.contains('$')) return true
+        cur = cur.groupId?.let { byId[it] }
+    }
+    return false
 }
 
 private fun resolveEffectiveMasks(
@@ -552,14 +597,19 @@ private fun RenderObjectNode(
     onWizAction: (String, String, String?) -> Unit,
 ) {
     val density = LocalDensity.current
-    val ctxJson = signals.toEvalContextJson(
-        scopeId = obj.groupId ?: "@",
-        screenW = sw.toDouble(),
-        screenH = sh.toDouble(),
-        stateValues = stateValues,
-        scopeAncestors = scopeAncestors,
-        palette = palette,
-    )
+    val needsCtx = hasAnyExpressionsInHierarchy(obj, byId)
+    val ctxJson = if (!needsCtx) {
+        ""
+    } else {
+        signals.toEvalContextJson(
+            scopeId = obj.groupId ?: "@",
+            screenW = sw.toDouble(),
+            screenH = sh.toDouble(),
+            stateValues = stateValues,
+            scopeAncestors = scopeAncestors,
+            palette = palette,
+        )
+    }
     val wb = computeWorldBox(obj, byId, sw, sh, signals, ctxJson)
     val baseFillArgb = if (obj.isCustomColor) {
         parseHexColorInt(obj.customHex)
@@ -862,6 +912,11 @@ private fun resolveTextContent(obj: SceneObject, signals: DeviceSignals, ctxJson
         "datetime" -> signals.datetimeText
         "battery_percent" -> "${signals.batteryLevel}%"
         "custom_text" -> {
+            val lastNotif = if (signals.notifications.lastTitle.isNotBlank()) {
+                "${signals.notifications.lastTitle}: ${signals.notifications.lastText}".trim()
+            } else {
+                ""
+            }
             val preExpanded = obj.customContent
                 .replace("\$WEATHER_CITY", signals.weatherCity.ifBlank { "Rosario" })
                 .replace("\$WEATHER_COND", signals.weatherCondition.ifBlank { "Despejado" })
@@ -869,7 +924,10 @@ private fun resolveTextContent(obj: SceneObject, signals: DeviceSignals, ctxJson
                 .replace("\$DAY_SHORT", signals.dayShort)
                 .replace("\$DAY_NUM", signals.dayNum)
                 .replace("\$TITLE", signals.media.title)
-            interpolateCustomText(preExpanded, ctxJson)
+                .replace("\$NOTIF_COUNT", "${signals.notifications.activeCount}")
+                .replace("\$LAST_NOTIF", lastNotif)
+                .replace("\$TIMER_TEXT", if (signals.timer.isActive) signals.timer.formattedRemaining else "")
+            if (ctxJson.isNotEmpty()) interpolateCustomText(preExpanded, ctxJson) else preExpanded
         }
         "weather_temp" -> signals.weatherTemp.ifBlank { "23°" }
         "media_title" -> signals.media.title.ifBlank { "Sin reproducción" }
@@ -1385,7 +1443,9 @@ private fun RenderWizButtonWidget(
     onWizAction: (String, String, String?) -> Unit,
 ) {
     val density = LocalDensity.current
-    val w = signals.wizStatus
+    val targetDevKey = obj.wizDeviceId?.takeIf { it.isNotBlank() } ?: "primary"
+    val w = signals.smartDevicesById[targetDevKey] ?: signals.wizStatus
+    val displayRightValue = w.valueLabel.ifBlank { if (w.isOn) "%${w.dimming}" else "OFF" }
 
     val typeface = remember(obj.customFontFamily, obj.fontFileName, obj.fontSourceId, obj.fontWeight, obj.fontItalic) {
         assetCache.resolveTypeface(obj)
@@ -1446,8 +1506,9 @@ private fun RenderWizButtonWidget(
     fun expandTemplate(tpl: String): String {
         return tpl
             .replace("\$WIZ_NAME", w.name.ifBlank { "WiZ dc5a" })
-            .replace("\$WIZ_ROOM", "Escritorio")
-            .replace("\$WIZ_DIM", "${w.dimming}%")
+            .replace("\$WIZ_ROOM", w.room.ifBlank { "Escritorio" })
+            .replace("\$WIZ_MODE", w.modeLabel.ifBlank { w.room.ifBlank { "Escritorio" } })
+            .replace("\$WIZ_DIM", displayRightValue)
             .replace("\$WIZ_ON", if (w.isOn) "ON" else "OFF")
             .replace("\$BATTERY", "${signals.batteryLevel}")
     }
@@ -1526,7 +1587,7 @@ private fun RenderWizButtonWidget(
                         }
                         if (obj.wizShowPercent) {
                             Text(
-                                text = if (w.isOn) "%${w.dimming}" else "OFF",
+                                text = displayRightValue,
                                 color = pctColor,
                                 fontSize = pctSp,
                                 fontFamily = fontFamily,
@@ -1604,7 +1665,7 @@ private fun RenderWizButtonWidget(
                     }
                     if (obj.wizShowPercent) {
                         Text(
-                            text = if (w.isOn) "%${w.dimming}" else "OFF",
+                            text = displayRightValue,
                             color = pctColor,
                             fontSize = pctSp,
                             fontFamily = fontFamily,
@@ -1672,7 +1733,7 @@ private fun RenderWizButtonWidget(
                     }
                     if (obj.wizShowPercent) {
                         Text(
-                            text = if (w.isOn) "%${w.dimming}" else "OFF",
+                            text = displayRightValue,
                             color = pctColor,
                             fontSize = pctSp,
                             fontFamily = fontFamily,
@@ -1699,13 +1760,25 @@ fun weatherCodeToIcon(code: Int): ImageVector = when (code) {
 }
 
 fun materialIconByName(name: String): ImageVector = when (name.lowercase()) {
-    "lightbulb", "bulb", "lamp" -> Icons.Rounded.Lightbulb
-    "bedtime", "night" -> Icons.Rounded.Bedtime
-    "music", "music_note" -> Icons.Rounded.MusicNote
-    "bolt", "charging" -> Icons.Rounded.Bolt
-    "sun", "wb_sunny" -> Icons.Rounded.WbSunny
-    "cloud" -> Icons.Rounded.Cloud
-    "play" -> Icons.Rounded.PlayArrow
+    "lightbulb", "bulb", "lamp", "light" -> Icons.Rounded.Lightbulb
+    "bedtime", "night", "moon" -> Icons.Rounded.Bedtime
+    "music", "music_note", "audio" -> Icons.Rounded.MusicNote
+    "bolt", "charging", "flash" -> Icons.Rounded.Bolt
+    "sun", "wb_sunny", "sunny" -> Icons.Rounded.WbSunny
+    "cloud", "weather" -> Icons.Rounded.Cloud
+    "play", "play_arrow" -> Icons.Rounded.PlayArrow
     "pause" -> Icons.Rounded.Pause
+    "tv", "television", "smart_tv" -> Icons.Rounded.Tv
+    "ac", "ac_unit", "snow", "cool" -> Icons.Rounded.AcUnit
+    "thermostat", "temp", "heat" -> Icons.Rounded.Thermostat
+    "fan", "air", "wind" -> Icons.Rounded.Air
+    "power", "plug", "switch" -> Icons.Rounded.Power
+    "power_off", "shutdown" -> Icons.Rounded.PowerSettingsNew
+    "wifi", "network" -> Icons.Rounded.Wifi
+    "home", "house" -> Icons.Rounded.Home
+    "alarm", "clock" -> Icons.Rounded.Alarm
+    "timer", "pomodoro" -> Icons.Rounded.Timer
+    "notifications", "bell", "notif" -> Icons.Rounded.Notifications
+    "battery", "battery_full" -> Icons.Rounded.BatteryFull
     else -> Icons.Rounded.Lightbulb
 }
