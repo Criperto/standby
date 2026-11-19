@@ -4,6 +4,7 @@ import android.app.Application
 import com.criperto.standby.core.DeviceSignalProvider
 import com.criperto.standby.core.PresetRepository
 import com.criperto.standby.core.SettingsRepository
+import com.criperto.standby.editor.EditorViewModel
 import com.criperto.standby.renderer.SceneAssetCache
 import com.criperto.standby.renderer.ShaderRegistry
 import com.criperto.standby.smarthome.SmartHomeRepository
@@ -27,6 +28,7 @@ class StandByApplication : Application() {
     val smartHomeController: SmartHomeViewModel by lazy {
         SmartHomeViewModel(this, smartHomeRepository, signalProvider)
     }
+    val editorController: EditorViewModel by lazy { EditorViewModel(this) }
     val shaderRegistry: ShaderRegistry by lazy { ShaderRegistry(this) }
     val assetCache: SceneAssetCache by lazy { SceneAssetCache(this) }
 

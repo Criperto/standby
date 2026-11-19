@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.criperto.standby.core.AppSettings
+import com.criperto.standby.editor.EditorScreen
 import com.criperto.standby.renderer.CutoutDiskCache
 import com.criperto.standby.renderer.DepthMaskRuntimeData
 import com.criperto.standby.renderer.SceneRenderer
@@ -163,11 +164,7 @@ private fun MainShell(app: StandByApplication) {
                         onOpenTab = { currentTab = it },
                     )
                     AppTab.SMART_HOME -> SmartHomeScreen(app = app)
-                    AppTab.EDITOR -> PhasePlaceholderScreen(
-                        icon = Icons.Rounded.AutoFixHigh,
-                        title = "Editor de Escenas y Shaders",
-                        description = "Se activa en la Fase 4 con capas, gizmos táctiles, Liquid Glass, regex y presets.",
-                    )
+                    AppTab.EDITOR -> EditorScreen(app = app)
                     AppTab.SETTINGS -> SettingsScreen(app = app)
                 }
             }
@@ -333,35 +330,6 @@ private fun HomeDashboardScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PhasePlaceholderScreen(
-    icon: ImageVector,
-    title: String,
-    description: String,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(title, style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
