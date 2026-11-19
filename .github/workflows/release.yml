@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag de versión para publicar como latest (ej. v0.3.0)'
+        description: 'Tag de versión para publicar como latest (ej. v0.4.0)'
         required: false
-        default: 'v0.3.0'
+        default: 'v0.4.0'
 
 permissions:
   contents: write
@@ -68,8 +68,10 @@ jobs:
       - name: Build Android APK (R8 Optimized Release) & Run Unit Tests
         run: |
           cd android
+          chmod +x gradlew
           export STANDBY_SKIP_GRADLE_RUST=1
-          gradle testDebugUnitTest assembleRelease --no-daemon
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
           VERSION="${GITHUB_REF_NAME#v}"
           if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
             VERSION="0.4.0"
