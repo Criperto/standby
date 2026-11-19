@@ -193,6 +193,20 @@ class SceneAssetCache(private val context: Context) {
         val key = "${obj.customFontFamily}|${obj.fontFileName}|${obj.fontSourceId}|${obj.fontWeight}|${obj.fontItalic}"
         typefaceCache[key]?.let { return it }
 
+        val famLower = obj.customFontFamily.trim().lowercase()
+        val isBundledSfPro = famLower.startsWith("sf pro") ||
+            famLower.startsWith("sf-pro") ||
+            obj.fontFileName?.startsWith("SF-Pro-Display") == true
+
+        if (isBundledSfPro) {
+            val assetName = resolveSfProAssetPath(obj.fontWeight, obj.fontItalic, obj.fontFileName)
+            val assetTf = runCatching { Typeface.createFromAsset(context.assets, assetName) }.getOrNull()
+            if (assetTf != null) {
+                typefaceCache[key] = assetTf
+                return assetTf
+            }
+        }
+
         val customFile = obj.fontFileName?.takeIf { it.isNotBlank() }?.let { fn ->
             File(fn).takeIf { it.isAbsolute && it.exists() }
                 ?: File(context.filesDir, "fonts/imported/$fn").takeIf { it.exists() }
@@ -203,7 +217,7 @@ class SceneAssetCache(private val context: Context) {
             File(context.filesDir, "fonts/downloaded/${fid}.ttf").takeIf { it.exists() }
         }
 
-        val base = if (customFile != null) {
+        val finalTf = if (customFile != null) {
             runCatching { Typeface.createFromFile(customFile) }.getOrNull() ?: Typeface.DEFAULT
         } else {
             val fam = obj.customFontFamily.takeIf { it.isNotBlank() } ?: "sans-serif"
@@ -213,16 +227,33 @@ class SceneAssetCache(private val context: Context) {
                 obj.fontItalic -> Typeface.ITALIC
                 else -> Typeface.NORMAL
             }
-            Typeface.create(fam, style)
-        }
-
-        val finalTf = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            Typeface.create(base, obj.fontWeight.coerceIn(100, 900), obj.fontItalic)
-        } else {
-            base
+            val base = Typeface.create(fam, style)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                Typeface.create(base, obj.fontWeight.coerceIn(100, 900), obj.fontItalic)
+            } else {
+                base
+            }
         }
         typefaceCache[key] = finalTf
         return finalTf
+    }
+
+    private fun resolveSfProAssetPath(weight: Int, italic: Boolean, explicitFile: String?): String {
+        if (!explicitFile.isNullOrBlank() && explicitFile.startsWith("SF-Pro-Display") && explicitFile.endsWith(".otf")) {
+            return "fonts/$explicitFile"
+        }
+        val w = weight.coerceIn(100, 900)
+        return when {
+            w <= 150 -> "fonts/SF-Pro-Display-Ultralight.otf"
+            w <= 250 -> "fonts/SF-Pro-Display-Thin.otf"
+            w <= 350 -> "fonts/SF-Pro-Display-Light.otf"
+            w <= 450 -> if (italic) "fonts/SF-Pro-Display-RegularItalic.otf" else "fonts/SF-Pro-Display-Regular.otf"
+            w <= 550 -> "fonts/SF-Pro-Display-Medium.otf"
+            w <= 650 -> "fonts/SF-Pro-Display-Semibold.otf"
+            w <= 750 -> if (italic) "fonts/SF-Pro-Display-BoldItalic.otf" else "fonts/SF-Pro-Display-Bold.otf"
+            w <= 850 -> "fonts/SF-Pro-Display-Heavy.otf"
+            else -> "fonts/SF-Pro-Display-Black.otf"
+        }
     }
 
     fun loadSvgAsset(assetName: String): SVG? {

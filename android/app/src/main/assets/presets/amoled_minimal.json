@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "AMOLED Minimal",
-  "description": "Reloj minimalista sobre negro puro AMOLED con fecha y batería.",
+  "description": "Reloj minimalista Apple SF Pro Display sobre negro puro AMOLED con fecha, clima y batería.",
   "author": "StandBy",
   "background": {
     "mode": "black",
@@ -11,7 +11,7 @@
   },
   "state": {},
   "meta": {
-    "targetAspect": "landscape"
+    "targetAspect": "16:9"
   },
   "objects": [
     {
@@ -22,13 +22,14 @@
       "zIndex": 1,
       "visible": true,
       "posX_ratio": 0.5,
-      "posY_ratio": 0.44,
-      "baseWidth": 640,
-      "baseHeight": 200,
+      "posY_ratio": 0.43,
+      "baseWidth": 1240,
+      "baseHeight": 420,
       "uniformScale": 1.0,
-      "baseFontSize": 148,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 310,
       "fontWeight": 300,
-      "letterSpacing": -4,
+      "letterSpacing": -10,
       "timeFormat": 0,
       "textColorChoice": "white",
       "fillAlpha": 0.96,
@@ -36,20 +37,21 @@
     },
     {
       "id": "date_sub",
-      "type": "date",
-      "name": "Fecha",
+      "type": "custom_text",
+      "name": "Fecha y Clima",
       "alias": "fecha",
       "zIndex": 2,
       "visible": true,
       "posX_ratio": 0.5,
-      "posY_ratio": 0.68,
-      "baseWidth": 520,
-      "baseHeight": 46,
-      "baseFontSize": 26,
+      "posY_ratio": 0.70,
+      "baseWidth": 1100,
+      "baseHeight": 88,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 44,
       "fontWeight": 500,
-      "dateFormat": 0,
+      "customContent": "$DATE  ·  $WEATHER_CITY $WEATHER_TEMP",
       "textColorChoice": "primary",
-      "fillAlpha": 0.9,
+      "fillAlpha": 0.92,
       "textAlign": "center"
     },
     {
@@ -60,9 +62,10 @@
       "zIndex": 3,
       "visible": true,
       "posX_ratio": 0.5,
-      "posY_ratio": 0.80,
-      "baseWidth": 150,
-      "baseHeight": 38,
+      "posY_ratio": 0.84,
+      "baseWidth": 280,
+      "baseHeight": 82,
+      "customFontFamily": "SF Pro Display",
       "textColorChoice": "onSurface",
       "fillAlpha": 0.85,
       "visibleCondition": "hasBattery"

@@ -493,16 +493,24 @@ fun SettingsScreen(
                     onCheckedChange = { c -> updateSettings { it.copy(weatherEnabled = c) } },
                 )
                 if (settings.weatherEnabled) {
-                    WeatherLocationInputs(
-                        city = settings.weatherCity,
-                        lat = settings.weatherLat,
-                        lon = settings.weatherLon,
-                        onApply = { c, la, lo ->
-                            updateSettings {
-                                it.copy(weatherCity = c, weatherLat = la, weatherLon = lo)
-                            }
-                        },
+                    SettingSwitchRow(
+                        title = "Detectar ubicación automáticamente (${settings.weatherCity})",
+                        subtitle = "Obtiene ciudad y coordenadas automáticamente por red (ej. Rosario)",
+                        checked = settings.weatherAutoLocation,
+                        onCheckedChange = { auto -> updateSettings { it.copy(weatherAutoLocation = auto) } },
                     )
+                    if (!settings.weatherAutoLocation) {
+                        WeatherLocationInputs(
+                            city = settings.weatherCity,
+                            lat = settings.weatherLat,
+                            lon = settings.weatherLon,
+                            onApply = { c, la, lo ->
+                                updateSettings {
+                                    it.copy(weatherCity = c, weatherLat = la, weatherLon = lo)
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

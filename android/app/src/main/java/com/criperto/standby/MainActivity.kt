@@ -117,8 +117,35 @@ fun StandByTheme(
 
 @Composable
 private fun MainShell(app: StandByApplication) {
+    val context = LocalContext.current
     var currentTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val settings by app.settingsRepository.settingsFlow.collectAsState(initial = AppSettings())
+    val signals by app.signalProvider.signals.collectAsState()
+
+    // Ensure accelerometer is active while MainActivity is open so rotating to horizontal enters StandBy
+    DisposableEffect(Unit) {
+        app.signalProvider.acquireRenderConsumer()
+        onDispose { app.signalProvider.releaseRenderConsumer() }
+    }
+
+    var wasPortrait by remember { mutableStateOf(!signals.isLandscape) }
+    LaunchedEffect(signals.isLandscape, settings.triggersEnabled, currentTab) {
+        if (!signals.isLandscape) {
+            wasPortrait = true
+        } else if (wasPortrait &&
+            signals.isLandscape &&
+            settings.triggersEnabled &&
+            currentTab != AppTab.EDITOR &&
+            !StandByActivity.isCurrentlyVisible.value
+        ) {
+            kotlinx.coroutines.delay(450L)
+            if (app.signalProvider.signals.value.isLandscape && !StandByActivity.isCurrentlyVisible.value) {
+                wasPortrait = false
+                context.startActivity(StandByActivity.createIntent(context, manualLaunch = true))
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

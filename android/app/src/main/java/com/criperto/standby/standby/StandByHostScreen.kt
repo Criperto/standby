@@ -68,6 +68,7 @@ fun StandByHostScreen(
     window: Window?,
     manualLaunch: Boolean,
     onExitStandBy: () -> Unit,
+    onOrientationAutoExit: () -> Unit = onExitStandBy,
     onWizAction: (command: String, deviceId: String, arg: String?) -> Unit = { cmd, dev, arg ->
         app.smartHomeController.executeSceneWizAction(cmd, dev, arg)
     },
@@ -92,6 +93,16 @@ fun StandByHostScreen(
     val settings by app.settingsRepository.settingsFlow.collectAsState(initial = AppSettings())
     val preset by app.presetRepository.activePresetFlow.collectAsState()
     val signals by app.signalProvider.signals.collectAsState()
+
+    // Exit StandBy automatically when physically rotated to vertical (portrait)
+    LaunchedEffect(signals.isLandscape, settings.orientationReq) {
+        if (settings.orientationReq == "landscape_only" && !signals.isLandscape) {
+            delay(500L)
+            if (!app.signalProvider.signals.value.isLandscape) {
+                onOrientationAutoExit()
+            }
+        }
+    }
 
     DisposableEffect(Unit) {
         app.signalProvider.acquireRenderConsumer()

@@ -14,6 +14,7 @@ import android.text.TextPaint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -423,6 +424,13 @@ private fun evalNum(obj: SceneObject, prop: String, base: Double, ctxBaseJson: S
     return evalExpressionNumeric(expr, prop, json)
 }
 
+const val SCENE_REF_W = 1920f
+const val SCENE_REF_H = 1080f
+
+fun computeViewportScale(sw: Float, sh: Float): Float {
+    return kotlin.math.min(sw / SCENE_REF_W, sh / SCENE_REF_H).coerceAtLeast(0.1f)
+}
+
 fun computeWorldBox(
     obj: SceneObject,
     byId: Map<String, SceneObject>,
@@ -431,6 +439,7 @@ fun computeWorldBox(
     signals: DeviceSignals,
     ctxJson: String,
 ): ComputedWorldBox {
+    val vScale = computeViewportScale(sw, sh)
     var effVisible = obj.visible
     var effOpacity = evalExpressionOr(obj.expressions["elementOpacity"], "elementOpacity", obj.elementOpacity, ctxJson)
     var gx = 0f
@@ -458,8 +467,8 @@ fun computeWorldBox(
                 gx = (grp.posXRatio * sw).toFloat()
                 gy = (grp.posYRatio * sh).toFloat()
             } else {
-                val ox = (grp.groupOffsetX * gSx).toFloat()
-                val oy = (grp.groupOffsetY * gSy).toFloat()
+                val ox = (grp.groupOffsetX * gSx * vScale).toFloat()
+                val oy = (grp.groupOffsetY * gSy * vScale).toFloat()
                 val rad = Math.toRadians(gRot.toDouble())
                 gx += (ox * cos(rad) - oy * sin(rad)).toFloat()
                 gy += (ox * sin(rad) + oy * cos(rad)).toFloat()
@@ -478,14 +487,14 @@ fun computeWorldBox(
     val baseW = evalExpressionOr(obj.expressions["baseWidth"] ?: obj.expressions["width"], "baseWidth", obj.baseWidth, ctxJson).toFloat()
     val baseH = evalExpressionOr(obj.expressions["baseHeight"] ?: obj.expressions["height"], "baseHeight", obj.baseHeight, ctxJson).toFloat()
 
-    val totalW = (baseW * scaleX * uniScale * gSx).coerceAtLeast(16f)
-    val totalH = (baseH * scaleY * uniScale * gSy).coerceAtLeast(16f)
+    val totalW = (baseW * vScale * scaleX * uniScale * gSx).coerceAtLeast(16f)
+    val totalH = (baseH * vScale * scaleY * uniScale * gSy).coerceAtLeast(16f)
 
     val anchorX: Float
     val anchorY: Float
     if (obj.groupId != null && byId.containsKey(obj.groupId)) {
-        val offX = evalExpressionOr(obj.expressions["groupOffsetX"], "groupOffsetX", obj.groupOffsetX, ctxJson).toFloat() * gSx
-        val offY = evalExpressionOr(obj.expressions["groupOffsetY"], "groupOffsetY", obj.groupOffsetY, ctxJson).toFloat() * gSy
+        val offX = evalExpressionOr(obj.expressions["groupOffsetX"], "groupOffsetX", obj.groupOffsetX, ctxJson).toFloat() * gSx * vScale
+        val offY = evalExpressionOr(obj.expressions["groupOffsetY"], "groupOffsetY", obj.groupOffsetY, ctxJson).toFloat() * gSy * vScale
         val rad = Math.toRadians(gRot.toDouble())
         anchorX = gx + (offX * cos(rad) - offY * sin(rad)).toFloat()
         anchorY = gy + (offX * sin(rad) + offY * cos(rad)).toFloat()
@@ -615,7 +624,7 @@ private fun RenderObjectNode(
                                         act, obj, signals, sw, sh, stateValues, scopeAncestors,
                                         palette, allObjects, onWizAction, "onTap"
                                     )
-                                } else if (obj.objType == "wiz_button") {
+                                } else if (obj.objType == "wiz_button" || obj.objType == "wiz_device") {
                                     onWizAction(obj.wizAction ?: "toggle", obj.wizDeviceId ?: "primary", obj.wizSceneId?.toString())
                                 } else if (obj.objType.startsWith("media_")) {
                                     val cmd = when (obj.objType) {
@@ -647,8 +656,11 @@ private fun RenderObjectNode(
                 } else Modifier
             )
     ) {
+        val vScale = computeViewportScale(sw, sh)
         when (obj.objType) {
-            "clock", "date", "custom_text", "weather_temp",
+            "clock", "clock_hours", "clock_minutes", "clock_seconds", "clock_separator", "clock_ampm",
+            "clock_h1", "clock_h2", "clock_m1", "clock_m2", "clock_s1", "clock_s2",
+            "date", "datetime", "custom_text", "weather_temp", "battery_percent",
             "media_title", "media_artist", "media_position", "media_duration" -> {
                 val displayText = resolveTextContent(obj, signals, ctxJson)
                 val fontSizePx = evalExpressionOr(
@@ -656,13 +668,13 @@ private fun RenderObjectNode(
                     "baseFontSize",
                     obj.baseFontSize,
                     ctxJson
-                ).toFloat() * wb.scaleY
+                ).toFloat() * vScale * wb.scaleY
                 val letterSp = evalExpressionOr(
                     obj.expressions["letterSpacing"],
                     "letterSpacing",
                     obj.letterSpacing,
                     ctxJson
-                ).toFloat()
+                ).toFloat() * vScale
                 val typeface = remember(obj.customFontFamily, obj.fontFileName, obj.fontSourceId, obj.fontWeight, obj.fontItalic) {
                     assetCache.resolveTypeface(obj)
                 }
@@ -670,7 +682,7 @@ private fun RenderObjectNode(
                 RenderTextWidget(
                     obj = obj,
                     text = displayText,
-                    fontSizePx = fontSizePx.coerceIn(8f, 500f),
+                    fontSizePx = fontSizePx.coerceIn(8f, 900f),
                     letterSpacingPx = letterSp,
                     typeface = typeface,
                     fillColor = fillColor,
@@ -682,8 +694,18 @@ private fun RenderObjectNode(
                 )
             }
             "shape" -> {
+                val scaledObj = remember(obj, vScale) {
+                    obj.copy(
+                        radiusUniform = obj.radiusUniform * vScale,
+                        radiusTopLeft = obj.radiusTopLeft * vScale,
+                        radiusTopRight = obj.radiusTopRight * vScale,
+                        radiusBottomRight = obj.radiusBottomRight * vScale,
+                        radiusBottomLeft = obj.radiusBottomLeft * vScale,
+                        strokeWidth = obj.strokeWidth * vScale,
+                    )
+                }
                 RenderShapeWidget(
-                    obj = obj,
+                    obj = scaledObj,
                     wb = wb,
                     fillColor = fillColor,
                     strokeColor = Color(strokeArgb),
@@ -693,7 +715,7 @@ private fun RenderObjectNode(
                     signals = signals,
                 )
             }
-            "svg_icon", "weather_icon", "media_prev", "media_play_pause",
+            "svg_icon", "icon_svg", "weather_icon", "battery_icon", "media_prev", "media_play_pause",
             "media_next", "media_shuffle", "media_loop", "media_button" -> {
                 RenderIconWidget(
                     obj = obj,
@@ -702,13 +724,26 @@ private fun RenderObjectNode(
                     assetCache = assetCache,
                 )
             }
-            "battery" -> {
-                RenderBatteryWidget(signals, fillColor, Color(resolvePaletteTokenInt("primary", palette)))
+            "battery", "battery_bar" -> {
+                RenderBatteryWidget(
+                    signals = signals,
+                    textColor = fillColor,
+                    accentColor = Color(resolvePaletteTokenInt("primary", palette)),
+                    wb = wb,
+                )
+            }
+            "weather" -> {
+                RenderWeatherCompoundWidget(
+                    signals = signals,
+                    textColor = fillColor,
+                    accentColor = Color(resolvePaletteTokenInt("primary", palette)),
+                    wb = wb,
+                )
             }
             "media" -> {
                 RenderMediaCardWidget(signals, fillColor, Color(resolvePaletteTokenInt("primary", palette)))
             }
-            "media_art" -> {
+            "media_art", "media_cover" -> {
                 val art = signals.media.albumArt
                 if (art != null) {
                     Image(
@@ -717,13 +752,13 @@ private fun RenderObjectNode(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(RoundedCornerShape(obj.radiusUniform.dp)),
+                            .clip(RoundedCornerShape((obj.radiusUniform * vScale).dp)),
                     )
                 } else if (!obj.hideWhenNoCover) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(RoundedCornerShape(obj.radiusUniform.dp))
+                            .clip(RoundedCornerShape((obj.radiusUniform * vScale).dp))
                             .background(fillColor.copy(alpha = 0.25f)),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -731,8 +766,16 @@ private fun RenderObjectNode(
                     }
                 }
             }
-            "wiz_button" -> {
-                RenderWizButtonWidget(signals, fillColor, Color(resolvePaletteTokenInt("primary", palette)))
+            "wiz_button", "wiz_device" -> {
+                RenderWizButtonWidget(
+                    obj = obj,
+                    signals = signals,
+                    textColor = fillColor,
+                    accentColor = Color(resolvePaletteTokenInt("primary", palette)),
+                    wb = wb,
+                    interactive = interactive,
+                    onWizAction = onWizAction,
+                )
             }
         }
 
@@ -789,15 +832,42 @@ private fun resolveTextContent(obj: SceneObject, signals: DeviceSignals, ctxJson
             8 -> "%02d".format(h)[1].toString()
             9 -> "%02d".format(m)[0].toString()
             10 -> "%02d".format(m)[1].toString()
+            11 -> {
+                val h12 = if (h % 12 == 0) 12 else h % 12
+                "%d:%02d".format(h12, m)
+            }
             else -> "%02d:%02d".format(h, m)
         }
+        "clock_hours" -> "%02d".format(h)
+        "clock_minutes" -> "%02d".format(m)
+        "clock_seconds" -> "%02d".format(s)
+        "clock_separator" -> ":"
+        "clock_ampm" -> if (h < 12) "AM" else "PM"
+        "clock_h1" -> "%02d".format(h)[0].toString()
+        "clock_h2" -> "%02d".format(h)[1].toString()
+        "clock_m1" -> "%02d".format(m)[0].toString()
+        "clock_m2" -> "%02d".format(m)[1].toString()
+        "clock_s1" -> "%02d".format(s)[0].toString()
+        "clock_s2" -> "%02d".format(s)[1].toString()
         "date" -> when (obj.dateFormat) {
             1 -> SimpleDateFormat("dd/MM/yyyy", Locale("es", "AR")).format(Date(signals.nowEpochMs))
             2 -> SimpleDateFormat("MMM d, yyyy", Locale("es", "AR")).format(Date(signals.nowEpochMs))
+            3 -> "${signals.dayShort} ${signals.dayNum}"
             else -> signals.dateText
         }
-        "custom_text" -> interpolateCustomText(obj.customContent, ctxJson)
-        "weather_temp" -> signals.weatherTemp.ifBlank { "--°" }
+        "datetime" -> signals.datetimeText
+        "battery_percent" -> "${signals.batteryLevel}%"
+        "custom_text" -> {
+            val preExpanded = obj.customContent
+                .replace("\$WEATHER_CITY", signals.weatherCity.ifBlank { "Rosario" })
+                .replace("\$WEATHER_COND", signals.weatherCondition.ifBlank { "Despejado" })
+                .replace("\$WEATHER_HL", signals.weatherHighLow.ifBlank { "H:27° L:15°" })
+                .replace("\$DAY_SHORT", signals.dayShort)
+                .replace("\$DAY_NUM", signals.dayNum)
+                .replace("\$TITLE", signals.media.title)
+            interpolateCustomText(preExpanded, ctxJson)
+        }
+        "weather_temp" -> signals.weatherTemp.ifBlank { "23°" }
         "media_title" -> signals.media.title.ifBlank { "Sin reproducción" }
         "media_artist" -> signals.media.artist
         "media_position" -> formatSeconds(signals.media.positionSec)
@@ -1173,9 +1243,20 @@ private fun RenderIconWidget(
 }
 
 @Composable
-private fun RenderBatteryWidget(signals: DeviceSignals, textColor: Color, accentColor: Color) {
+private fun RenderBatteryWidget(
+    signals: DeviceSignals,
+    textColor: Color,
+    accentColor: Color,
+    wb: ComputedWorldBox,
+) {
+    val density = LocalDensity.current
+    val iconSizeDp = with(density) { (wb.height * 0.50f).coerceIn(14f, 44f).toDp() }
+    val fontSizeSp = with(density) { (wb.height * 0.44f).coerceIn(11f, 38f).toSp() }
+
     Row(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -1183,14 +1264,51 @@ private fun RenderBatteryWidget(signals: DeviceSignals, textColor: Color, accent
             imageVector = if (signals.isCharging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryFull,
             contentDescription = null,
             tint = if (signals.isCharging) accentColor else textColor,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(iconSizeDp),
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = "${signals.batteryLevel}%",
             color = textColor,
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = fontSizeSp,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+        )
+    }
+}
+
+@Composable
+private fun RenderWeatherCompoundWidget(
+    signals: DeviceSignals,
+    textColor: Color,
+    accentColor: Color,
+    wb: ComputedWorldBox,
+) {
+    val density = LocalDensity.current
+    val iconSizeDp = with(density) { (wb.height * 0.48f).coerceIn(16f, 46f).toDp() }
+    val fontSizeSp = with(density) { (wb.height * 0.44f).coerceIn(12f, 38f).toSp() }
+
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = weatherCodeToIcon(signals.weatherCode),
+            contentDescription = null,
+            tint = accentColor,
+            modifier = Modifier.size(iconSizeDp),
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "${signals.weatherTemp.ifBlank { "23°" }} · ${signals.weatherCity}",
+            color = textColor,
+            fontSize = fontSizeSp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
@@ -1250,40 +1368,111 @@ private fun RenderMediaCardWidget(signals: DeviceSignals, textColor: Color, acce
 }
 
 @Composable
-private fun RenderWizButtonWidget(signals: DeviceSignals, textColor: Color, accentColor: Color) {
+private fun RenderWizButtonWidget(
+    obj: SceneObject,
+    signals: DeviceSignals,
+    textColor: Color,
+    accentColor: Color,
+    wb: ComputedWorldBox,
+    interactive: Boolean,
+    onWizAction: (String, String, String?) -> Unit,
+) {
+    val density = LocalDensity.current
     val w = signals.wizStatus
-    val bulbTint = if (w.isOn) {
+    val lampColor = remember(w.hex, accentColor) {
         runCatching { Color(parseHexColorInt(w.hex)) }.getOrDefault(accentColor)
-    } else {
-        textColor.copy(alpha = 0.45f)
     }
-    Row(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+    val baseBg = Color(0xFF283A54)
+    val fillTint = if (w.isOn) {
+        androidx.compose.ui.graphics.lerp(Color(0xFF96877A), lampColor, 0.35f)
+    } else {
+        Color(0xFF33445E)
+    }
+    val fillFrac = if (w.isOn) (w.dimming.coerceIn(10, 100) / 100f) else 0f
+    val cornerDp = with(density) { (wb.height * 0.26f).coerceIn(10f, 28f).toDp() }
+    val titleSp = with(density) { (wb.height * 0.24f).coerceIn(10f, 22f).toSp() }
+    val subSp = with(density) { (wb.height * 0.19f).coerceIn(8f, 17f).toSp() }
+    val pctSp = with(density) { (wb.height * 0.25f).coerceIn(10f, 23f).toSp() }
+    val padH = with(density) { (wb.width * 0.055f).coerceIn(6f, 20f).toDp() }
+    val padV = with(density) { (wb.height * 0.14f).coerceIn(4f, 16f).toDp() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(cornerDp))
+            .background(baseBg)
+            .then(
+                if (interactive) {
+                    Modifier
+                        .pointerInput(obj.id, obj.wizAction, obj.wizDeviceId) {
+                            detectTapGestures(
+                                onTap = {
+                                    onWizAction(
+                                        obj.wizAction ?: "toggle",
+                                        obj.wizDeviceId ?: "primary",
+                                        obj.wizSceneId?.toString(),
+                                    )
+                                },
+                            )
+                        }
+                        .pointerInput(obj.id, obj.wizDeviceId) {
+                            detectHorizontalDragGestures { change, _ ->
+                                change.consume()
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                val pct = ((change.position.x / width) * 100f).roundToInt().coerceIn(10, 100)
+                                onWizAction("brightness", obj.wizDeviceId ?: "primary", pct.toString())
+                            }
+                        }
+                } else Modifier
+            ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Rounded.Lightbulb,
-                contentDescription = null,
-                tint = bulbTint,
-                modifier = Modifier.size(28.dp),
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            if (fillFrac > 0.01f) {
+                drawRect(
+                    color = fillTint,
+                    topLeft = Offset.Zero,
+                    size = androidx.compose.ui.geometry.Size(size.width * fillFrac, size.height),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = padH, vertical = padV),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f).padding(end = 6.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(
-                    text = w.name,
-                    color = textColor,
-                    style = MaterialTheme.typography.titleSmall,
+                    text = w.name.ifBlank { "WiZ dc5a" },
+                    color = Color.White,
+                    fontSize = titleSp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (w.isOn) "Encendida • ${w.dimming}%" else "Apagada",
-                    color = textColor.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Escritorio",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = subSp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+            Text(
+                text = if (w.isOn) "%${w.dimming}" else "OFF",
+                color = if (w.isOn) Color(0xFF5CA8FF) else Color.White.copy(alpha = 0.55f),
+                fontSize = pctSp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 }

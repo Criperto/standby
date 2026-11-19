@@ -158,19 +158,76 @@ object WizColorMath {
     }
 
     fun stateToHex(state: SmartDeviceStateDto): String {
-        if (!state.isOn) return "#555555"
+        if (!state.isOn) return "#485262"
+
+        // Priority 1: Active Scene (e.g. 12 = Luz diurna). Firmware often leaves residual r/g/b in getPilot!
+        val sid = state.sceneId
+        if (sid != null && sid > 0) {
+            return when (sid) {
+                12, 15, 17 -> "#EEF6FF" // Luz diurna / Concentración / Colores reales
+                11, 6, 23 -> "#FFD6A5"  // Luz cálida / Acogedor / Blanco dorado
+                13, 27, 29 -> "#DCEBFF" // Luz fría / Blanco / Estudio
+                14, 22, 5 -> "#FFB067"  // Luz nocturna / Vela / Chimenea
+                16, 10, 9 -> "#FFC68A"  // Relajación / Dormir / Despertar
+                3 -> "#FF7B54"          // Atardecer
+                1 -> "#38BDF8"          // Océano
+                2, 30 -> "#D946EF"      // Romance / Ciberpunk
+                4, 32 -> "#A855F7"      // Fiesta / Club
+                7, 31 -> "#34D399"      // Bosque / Mojito
+                8 -> "#F9A8D4"          // Pastel
+                18 -> "#818CF8"         // TV
+                else -> "#EEF6FF"
+            }
+        }
+
+        // Priority 2: White Temperature (Kelvin)
+        val k = state.tempKelvin
+        if (k != null && k > 0) {
+            return when {
+                k <= 2500 -> "#FFB56B"
+                k <= 3200 -> "#FFD6A5"
+                k <= 4300 -> "#FFF3E2"
+                k <= 5300 -> "#EEF6FF" // Luz día ~5000K
+                else -> "#DCEBFF"
+            }
+        }
+
+        // Priority 3: Explicit RGB mode
         val r = state.r
         val g = state.g
         val b = state.b
-        if (r != null && g != null && b != null) {
+        if (r != null && g != null && b != null && (r > 0 || g > 0 || b > 0)) {
             return rgbToHex(r, g, b)
         }
-        val k = state.tempKelvin ?: 3500
-        return when {
-            k <= 3000 -> "#FFD29E"
-            k >= 5200 -> "#DCEBFF"
-            else -> "#FFF1DF"
+        return "#EEF6FF"
+    }
+
+    fun stateModeLabel(
+        state: SmartDeviceStateDto,
+        scenes: List<WizSceneInfoDto> = emptyList(),
+    ): String {
+        if (!state.isOn) return "Apagada"
+        val sid = state.sceneId
+        if (sid != null && sid > 0) {
+            return scenes.firstOrNull { it.id == sid }?.nameEs ?: when (sid) {
+                11 -> "Luz cálida"
+                12 -> "Luz diurna"
+                13 -> "Luz fría"
+                14 -> "Luz nocturna"
+                3 -> "Atardecer"
+                6 -> "Acogedor"
+                30 -> "Ciberpunk"
+                else -> "Escena #$sid"
+            }
         }
+        val k = state.tempKelvin
+        if (k != null && k > 0) {
+            return if (k in 4800..5500) "Luz día ${k}K" else "${k}K"
+        }
+        if (state.r != null && state.g != null && state.b != null) {
+            return "RGB"
+        }
+        return "Luz diurna"
     }
 }
 
@@ -188,18 +245,31 @@ class SmartHomeViewModel(
     private val _uiState = MutableStateFlow(SmartHomeUiState(scenes = loadScenesCatalog()))
     val uiState: StateFlow<SmartHomeUiState> = _uiState.asStateFlow()
 
+    companion object {
+        val PINNED_ALL_OFF = SmartSceneFavorite(
+            id = "builtin_all_off",
+            name = "Apagar todo",
+            actionType = "off",
+        )
+    }
+
     init {
         scope.launch {
             repository.storeFlow.collect { store ->
                 _uiState.value = _uiState.value.copy(
                     devices = store.devices,
-                    favorites = store.favorites,
+                    favorites = store.favorites.filterNot { it.actionType == "off" && it.deviceId.isBlank() },
                     rooms = store.rooms,
                 )
                 syncPrimaryDeviceSignal()
             }
         }
-        refreshAllStates()
+        scope.launch {
+            while (true) {
+                refreshAllStates()
+                delay(8_000L)
+            }
+        }
     }
 
     private fun loadScenesCatalog(): List<WizSceneInfoDto> {
@@ -405,6 +475,7 @@ class SmartHomeViewModel(
         updateOptimisticState(deviceId) { it.copy(isOn = on) }
         throttler.submit("power:$deviceId") {
             runCatching { wizSetPowerFfi(dev.ip, dev.port.toUShort(), on) }
+                .onSuccess { schedulePostCommandSync(dev) }
                 .onFailure { reportCmdError(deviceId, it) }
         }
     }
@@ -415,6 +486,7 @@ class SmartHomeViewModel(
         updateOptimisticState(deviceId) { it.copy(isOn = true, brightness = clamped) }
         throttler.submit("dim:$deviceId") {
             runCatching { wizSetBrightnessFfi(dev.ip, dev.port.toUShort(), clamped.toUByte()) }
+                .onSuccess { schedulePostCommandSync(dev) }
                 .onFailure { reportCmdError(deviceId, it) }
         }
     }
@@ -446,7 +518,9 @@ class SmartHomeViewModel(
                     bb.toUByte(),
                     dim?.toUByte(),
                 )
-            }.onFailure { reportCmdError(deviceId, it) }
+            }
+                .onSuccess { schedulePostCommandSync(dev) }
+                .onFailure { reportCmdError(deviceId, it) }
         }
     }
 
@@ -468,7 +542,9 @@ class SmartHomeViewModel(
         throttler.submit("temp:$deviceId") {
             runCatching {
                 wizSetTempFfi(dev.ip, dev.port.toUShort(), k.toUShort(), dim?.toUByte())
-            }.onFailure { reportCmdError(deviceId, it) }
+            }
+                .onSuccess { schedulePostCommandSync(dev) }
+                .onFailure { reportCmdError(deviceId, it) }
         }
     }
 
@@ -480,6 +556,10 @@ class SmartHomeViewModel(
             it.copy(
                 isOn = true,
                 sceneId = sceneId,
+                tempKelvin = null,
+                r = null,
+                g = null,
+                b = null,
                 speed = spd ?: it.speed,
                 brightness = dim ?: it.brightness,
             )
@@ -493,7 +573,17 @@ class SmartHomeViewModel(
                     spd?.toUByte(),
                     dim?.toUByte(),
                 )
-            }.onFailure { reportCmdError(deviceId, it) }
+            }
+                .onSuccess { schedulePostCommandSync(dev) }
+                .onFailure { reportCmdError(deviceId, it) }
+        }
+    }
+
+    private fun schedulePostCommandSync(dev: WizDeviceConfig) {
+        scope.launch {
+            delay(450L)
+            refreshSingleDevice(dev)
+            syncPrimaryDeviceSignal()
         }
     }
 

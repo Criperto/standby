@@ -50,9 +50,14 @@ data class DeviceSignals(
     val localYyyyMmDd: Long = 20261118,
     val dateText: String = "",
     val datetimeText: String = "",
+    val dayShort: String = "JUE",
+    val dayNum: String = "18",
     val media: MediaSnapshot = MediaSnapshot(),
-    val weatherTemp: String = "",
+    val weatherTemp: String = "23°",
     val weatherCode: Int = 0,
+    val weatherCity: String = "Rosario",
+    val weatherCondition: String = "Despejado",
+    val weatherHighLow: String = "H:27° L:15°",
     val wizStatus: PrimaryWizStatus = PrimaryWizStatus(),
 ) {
     fun toEvalContextJson(
@@ -267,8 +272,11 @@ class DeviceSignalProvider(
         }
     }
 
+    private var sensorsRegistered = false
+
     private fun observeWeather() {
         scope.launch(Dispatchers.IO) {
+            var autoDetectedOnce = false
             settingsRepository.settingsFlow.collectLatest { settings ->
                 if (!settings.weatherEnabled) {
                     if (_signals.value.weatherTemp.isNotEmpty()) {
@@ -276,32 +284,129 @@ class DeviceSignalProvider(
                     }
                     return@collectLatest
                 }
+
+                var activeCity = settings.weatherCity.ifBlank { "Rosario" }
+                var activeLat = settings.weatherLat
+                var activeLon = settings.weatherLon
+
+                _signals.value = _signals.value.copy(weatherCity = activeCity)
+
+                if (settings.weatherAutoLocation && !autoDetectedOnce) {
+                    val detected = detectLocationByIp()
+                    if (detected != null) {
+                        autoDetectedOnce = true
+                        activeCity = detected.first
+                        activeLat = detected.second
+                        activeLon = detected.third
+                        _signals.value = _signals.value.copy(weatherCity = activeCity)
+                        if (activeCity != settings.weatherCity ||
+                            kotlin.math.abs(activeLat - settings.weatherLat) > 0.01 ||
+                            kotlin.math.abs(activeLon - settings.weatherLon) > 0.01
+                        ) {
+                            settingsRepository.update {
+                                it.copy(
+                                    weatherCity = activeCity,
+                                    weatherLat = activeLat,
+                                    weatherLon = activeLon,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 while (isActive) {
-                    fetchOpenMeteo(settings.weatherLat, settings.weatherLon)
-                    delay(30 * 60_000L)
+                    fetchOpenMeteo(activeLat, activeLon, activeCity)
+                    delay(20 * 60_000L)
                 }
             }
         }
     }
 
-    private fun fetchOpenMeteo(lat: Double, lon: Double) {
-        val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code"
+    private fun detectLocationByIp(): Triple<String, Double, Double>? {
+        // 1) Try ipwho.is (HTTPS, no key)
+        runCatching {
+            val req = Request.Builder().url("https://ipwho.is/").build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val json = JSONObject(resp.body?.string().orEmpty())
+                    if (json.optBoolean("success", false)) {
+                        val city = json.optString("city").trim()
+                        val lat = json.optDouble("latitude", Double.NaN)
+                        val lon = json.optDouble("longitude", Double.NaN)
+                        if (city.isNotEmpty() && !lat.isNaN() && !lon.isNaN()) {
+                            return Triple(city, lat, lon)
+                        }
+                    }
+                }
+            }
+        }
+        // 2) Fallback ipapi.co
+        runCatching {
+            val req = Request.Builder().url("https://ipapi.co/json/").build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val json = JSONObject(resp.body?.string().orEmpty())
+                    val city = json.optString("city").trim()
+                    val lat = json.optDouble("latitude", Double.NaN)
+                    val lon = json.optDouble("longitude", Double.NaN)
+                    if (city.isNotEmpty() && !lat.isNaN() && !lon.isNaN()) {
+                        return Triple(city, lat, lon)
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun fetchOpenMeteo(lat: Double, lon: Double, city: String) {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+            "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
         runCatching {
             val req = Request.Builder().url(url).build()
             httpClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return
                 val body = resp.body?.string() ?: return
-                val cur = JSONObject(body).optJSONObject("current") ?: return
+                val root = JSONObject(body)
+                val cur = root.optJSONObject("current") ?: return
                 val temp = cur.optDouble("temperature_2m", Double.NaN)
                 val code = cur.optInt("weather_code", 0)
+
+                var hl = _signals.value.weatherHighLow
+                val daily = root.optJSONObject("daily")
+                if (daily != null) {
+                    val maxArr = daily.optJSONArray("temperature_2m_max")
+                    val minArr = daily.optJSONArray("temperature_2m_min")
+                    val maxT = maxArr?.optDouble(0, Double.NaN) ?: Double.NaN
+                    val minT = minArr?.optDouble(0, Double.NaN) ?: Double.NaN
+                    if (!maxT.isNaN() && !minT.isNaN()) {
+                        hl = "H:${maxT.toInt()}° L:${minT.toInt()}°"
+                    }
+                }
+
                 if (!temp.isNaN()) {
                     _signals.value = _signals.value.copy(
                         weatherTemp = "${temp.toInt()}°",
                         weatherCode = code,
+                        weatherCity = city,
+                        weatherCondition = weatherCodeToLabelEs(code),
+                        weatherHighLow = hl,
                     )
                 }
             }
         }
+    }
+
+    private fun weatherCodeToLabelEs(code: Int): String = when (code) {
+        0 -> "Despejado"
+        1 -> "Mayormente despejado"
+        2 -> "Parcialmente nublado"
+        3 -> "Nublado"
+        45, 48 -> "Niebla"
+        51, 53, 55 -> "Llovizna"
+        61, 63, 65, 80, 81, 82 -> "Lluvia"
+        71, 73, 75, 77, 85, 86 -> "Nieve"
+        95, 96, 99 -> "Tormenta"
+        else -> "Soleado"
     }
 
     fun updateWizStatus(status: PrimaryWizStatus) {
@@ -311,7 +416,24 @@ class DeviceSignalProvider(
     fun setSensorsActive(active: Boolean) {
         if (_sensorsActive.value == active) return
         _sensorsActive.value = active
-        if (active) {
+        syncSensorListeners()
+    }
+
+    fun acquireRenderConsumer() {
+        _activeConsumers.value = (_activeConsumers.value + 1).coerceAtLeast(1)
+        syncSensorListeners()
+    }
+
+    fun releaseRenderConsumer() {
+        _activeConsumers.value = (_activeConsumers.value - 1).coerceAtLeast(0)
+        syncSensorListeners()
+    }
+
+    private fun syncSensorListeners() {
+        val shouldListen = _sensorsActive.value || _activeConsumers.value > 0
+        if (shouldListen == sensorsRegistered) return
+        sensorsRegistered = shouldListen
+        if (shouldListen) {
             sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)?.let {
                 sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
             }
@@ -321,14 +443,6 @@ class DeviceSignalProvider(
         } else {
             sensorManager.unregisterListener(sensorListener)
         }
-    }
-
-    fun acquireRenderConsumer() {
-        _activeConsumers.value = (_activeConsumers.value + 1).coerceAtLeast(1)
-    }
-
-    fun releaseRenderConsumer() {
-        _activeConsumers.value = (_activeConsumers.value - 1).coerceAtLeast(0)
     }
 
     private fun updateClockFields(
@@ -345,6 +459,15 @@ class DeviceSignalProvider(
         val day = cal.get(Calendar.DAY_OF_MONTH)
         val dowCal = cal.get(Calendar.DAY_OF_WEEK) // Sun=1 .. Sat=7
         val weekdayMon0 = (dowCal + 5) % 7
+        val dayShort = when (weekdayMon0) {
+            0 -> "LUN"
+            1 -> "MAR"
+            2 -> "MIÉ"
+            3 -> "JUE"
+            4 -> "VIE"
+            5 -> "SÁB"
+            else -> "DOM"
+        }
         val yyyymmdd = year * 10000L + month * 100L + day
         val now = Date(cal.timeInMillis)
         val dateText = if (prev.localYyyyMmDd != yyyymmdd || prev.dateText.isEmpty()) {
@@ -364,6 +487,8 @@ class DeviceSignalProvider(
             localYyyyMmDd = yyyymmdd,
             dateText = dateText,
             datetimeText = datetimeFmt.format(now),
+            dayShort = dayShort,
+            dayNum = day.toString(),
         )
     }
 }

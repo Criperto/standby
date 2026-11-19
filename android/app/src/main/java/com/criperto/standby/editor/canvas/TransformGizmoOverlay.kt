@@ -2,6 +2,7 @@ package com.criperto.standby.editor.canvas
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.criperto.standby.core.SceneObject
 import com.criperto.standby.core.WorldTransformDto
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -51,6 +53,8 @@ fun TransformGizmoOverlay(
     worldBox: WorldTransformDto?,
     screenW: Float,
     screenH: Float,
+    onHitTestObjectAt: (Offset) -> SceneObject?,
+    onSelectObject: (String?) -> Unit,
     onBeginDrag: () -> Unit,
     onEndDrag: () -> Unit,
     onMoveBy: (dx: Float, dy: Float) -> Boolean,
@@ -61,19 +65,13 @@ fun TransformGizmoOverlay(
     onUpdateGradientEndpoint: (isP0: Boolean, normX: Double, normY: Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (primary == null || worldBox == null) return
-
     val haptics = LocalHapticFeedback.current
     val curPrimary by rememberUpdatedState(primary)
     val curBox by rememberUpdatedState(worldBox)
+    val curHitTest by rememberUpdatedState(onHitTestObjectAt)
+    val curSelect by rememberUpdatedState(onSelectObject)
 
     var activePart by remember { mutableStateOf(GizmoDragPart.NONE) }
-
-    val cx = worldBox.visualCenterX.toFloat()
-    val cy = worldBox.visualCenterY.toFloat()
-    val w = worldBox.width.toFloat().coerceAtLeast(32f)
-    val h = worldBox.height.toFloat().coerceAtLeast(32f)
-    val rotDeg = worldBox.rotationDeg.toFloat()
 
     fun worldToLocal(pt: Offset, box: WorldTransformDto): Offset {
         val dx = pt.x - box.visualCenterX.toFloat()
@@ -88,15 +86,15 @@ fun TransformGizmoOverlay(
         val local = worldToLocal(pt, box)
         val hw = (box.width.toFloat().coerceAtLeast(32f)) / 2f
         val hh = (box.height.toFloat().coerceAtLeast(32f)) / 2f
-        val hitR = 34f
+        val hitR = 32f
 
-        // Rotation stem above top edge
-        val rotHandle = Offset(0f, -hh - 42f)
+        // 1. Rotation stem above top edge
+        val rotHandle = Offset(0f, -hh - 38f)
         if (hypot(local.x - rotHandle.x, local.y - rotHandle.y) <= hitR) {
             return GizmoDragPart.ROTATE
         }
 
-        // Gradient endpoints when gradient is enabled
+        // 2. Gradient endpoints when gradient is enabled
         val grad = obj.gradient
         if (grad?.enabled == true) {
             val p0Local = Offset(
@@ -107,41 +105,41 @@ fun TransformGizmoOverlay(
                 ((grad.p1x - 0.5) * box.width).toFloat(),
                 ((grad.p1y - 0.5) * box.height).toFloat(),
             )
-            if (hypot(local.x - p0Local.x, local.y - p0Local.y) <= 28f) return GizmoDragPart.GRAD_P0
-            if (hypot(local.x - p1Local.x, local.y - p1Local.y) <= 28f) return GizmoDragPart.GRAD_P1
+            if (hypot(local.x - p0Local.x, local.y - p0Local.y) <= 26f) return GizmoDragPart.GRAD_P0
+            if (hypot(local.x - p1Local.x, local.y - p1Local.y) <= 26f) return GizmoDragPart.GRAD_P1
         }
 
-        // Pivot diamond
-        val pivLocal = Offset(
-            ((obj.pivotX - 0.5) * box.width).toFloat(),
-            ((obj.pivotY - 0.5) * box.height).toFloat(),
-        )
-        if (hypot(local.x - pivLocal.x, local.y - pivLocal.y) <= 24f) {
-            return GizmoDragPart.PIVOT
-        }
-
-        // Shape param handle (top-left inside corner)
-        if (obj.objType == "shape") {
-            val spHandle = Offset(-hw + 24f, -hh + 24f)
-            if (hypot(local.x - spHandle.x, local.y - spHandle.y) <= 24f) {
-                return GizmoDragPart.SHAPE_PARAM
-            }
-        }
-
-        // 4 corners
+        // 3. 4 corners
         if (hypot(local.x - (-hw), local.y - (-hh)) <= hitR) return GizmoDragPart.CORNER_TL
         if (hypot(local.x - hw, local.y - (-hh)) <= hitR) return GizmoDragPart.CORNER_TR
         if (hypot(local.x - hw, local.y - hh) <= hitR) return GizmoDragPart.CORNER_BR
         if (hypot(local.x - (-hw), local.y - hh) <= hitR) return GizmoDragPart.CORNER_BL
 
-        // 4 edges
+        // 4. 4 edges
         if (hypot(local.x - (-hw), local.y) <= hitR) return GizmoDragPart.EDGE_L
         if (hypot(local.x - hw, local.y) <= hitR) return GizmoDragPart.EDGE_R
         if (hypot(local.x, local.y - (-hh)) <= hitR) return GizmoDragPart.EDGE_T
         if (hypot(local.x, local.y - hh) <= hitR) return GizmoDragPart.EDGE_B
 
-        // Interior move
-        if (local.x in (-hw - 16f)..(hw + 16f) && local.y in (-hh - 16f)..(hh + 16f)) {
+        // 5. Shape param handle (top-left inside corner)
+        if (obj.objType == "shape") {
+            val spHandle = Offset(-hw + 22f, -hh + 22f)
+            if (hypot(local.x - spHandle.x, local.y - spHandle.y) <= 22f) {
+                return GizmoDragPart.SHAPE_PARAM
+            }
+        }
+
+        // 6. Pivot diamond (only if fairly close so interior move stays easy)
+        val pivLocal = Offset(
+            ((obj.pivotX - 0.5) * box.width).toFloat(),
+            ((obj.pivotY - 0.5) * box.height).toFloat(),
+        )
+        if (hypot(local.x - pivLocal.x, local.y - pivLocal.y) <= 18f) {
+            return GizmoDragPart.PIVOT
+        }
+
+        // 7. Interior move
+        if (local.x in (-hw - 10f)..(hw + 10f) && local.y in (-hh - 10f)..(hh + 10f)) {
             return GizmoDragPart.MOVE
         }
         return GizmoDragPart.NONE
@@ -150,12 +148,36 @@ fun TransformGizmoOverlay(
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(primary.id) {
+            .pointerInput(screenW, screenH) {
+                detectTapGestures { tapOffset ->
+                    val hit = curHitTest(tapOffset)
+                    curSelect(hit?.id)
+                }
+            }
+            .pointerInput(screenW, screenH) {
                 detectDragGestures(
                     onDragStart = { startOffset ->
-                        val picked = pickHandle(startOffset, curPrimary, curBox)
-                        activePart = picked
-                        if (picked != GizmoDragPart.NONE) {
+                        val p = curPrimary
+                        val b = curBox
+                        val initialPick = if (p != null && b != null) {
+                            pickHandle(startOffset, p, b)
+                        } else {
+                            GizmoDragPart.NONE
+                        }
+
+                        // If user didn't grab a specific resize/rotate/pivot handle, check if they grabbed another object!
+                        if (initialPick == GizmoDragPart.NONE || initialPick == GizmoDragPart.MOVE) {
+                            val hitObj = curHitTest(startOffset)
+                            if (hitObj != null && hitObj.id != p?.id) {
+                                curSelect(hitObj.id)
+                                activePart = GizmoDragPart.MOVE
+                                onBeginDrag()
+                                return@detectDragGestures
+                            }
+                        }
+
+                        activePart = initialPick
+                        if (initialPick != GizmoDragPart.NONE) {
                             onBeginDrag()
                         }
                     },
@@ -173,9 +195,10 @@ fun TransformGizmoOverlay(
                     },
                     onDrag = { change, dragAmount ->
                         if (activePart == GizmoDragPart.NONE) return@detectDragGestures
+                        val box = curBox ?: return@detectDragGestures
+                        val obj = curPrimary ?: return@detectDragGestures
                         change.consume()
-                        val box = curBox
-                        val obj = curPrimary
+
                         val bw = box.width.toFloat().coerceAtLeast(32f)
                         val bh = box.height.toFloat().coerceAtLeast(32f)
 
@@ -200,18 +223,18 @@ fun TransformGizmoOverlay(
                             }
                             GizmoDragPart.CORNER_BR, GizmoDragPart.CORNER_TR, GizmoDragPart.CORNER_BL, GizmoDragPart.CORNER_TL -> {
                                 val local = worldToLocal(change.position, box)
-                                val fx = (kotlin.math.abs(local.x) * 2f / bw).coerceIn(0.6f, 1.6f)
-                                val fy = (kotlin.math.abs(local.y) * 2f / bh).coerceIn(0.6f, 1.6f)
+                                val fx = (abs(local.x) * 2f / bw).coerceIn(0.75f, 1.35f)
+                                val fy = (abs(local.y) * 2f / bh).coerceIn(0.75f, 1.35f)
                                 onResizeFactor(fx, fy)
                             }
                             GizmoDragPart.EDGE_L, GizmoDragPart.EDGE_R -> {
                                 val local = worldToLocal(change.position, box)
-                                val fx = (kotlin.math.abs(local.x) * 2f / bw).coerceIn(0.6f, 1.6f)
+                                val fx = (abs(local.x) * 2f / bw).coerceIn(0.75f, 1.35f)
                                 onResizeFactor(fx, 1f)
                             }
                             GizmoDragPart.EDGE_T, GizmoDragPart.EDGE_B -> {
                                 val local = worldToLocal(change.position, box)
-                                val fy = (kotlin.math.abs(local.y) * 2f / bh).coerceIn(0.6f, 1.6f)
+                                val fy = (abs(local.y) * 2f / bh).coerceIn(0.75f, 1.35f)
                                 onResizeFactor(1f, fy)
                             }
                             GizmoDragPart.SHAPE_PARAM -> {
@@ -237,6 +260,15 @@ fun TransformGizmoOverlay(
                 )
             },
     ) {
+        val p = primary ?: return@Canvas
+        val box = worldBox ?: return@Canvas
+
+        val cx = box.visualCenterX.toFloat()
+        val cy = box.visualCenterY.toFloat()
+        val w = box.width.toFloat().coerceAtLeast(32f)
+        val h = box.height.toFloat().coerceAtLeast(32f)
+        val rotDeg = box.rotationDeg.toFloat()
+
         val cyan = Color(0xFF38BDF8)
         val amber = Color(0xFFF59E0B)
         val purple = Color(0xFFA855F7)
@@ -257,9 +289,9 @@ fun TransformGizmoOverlay(
             )
 
             // Rotation stem & handle
-            drawLine(cyan, Offset(0f, -hh), Offset(0f, -hh - 42f), strokeWidth = 2.5f)
-            drawCircle(Color.White, radius = 11f, center = Offset(0f, -hh - 42f))
-            drawCircle(cyan, radius = 11f, center = Offset(0f, -hh - 42f), style = Stroke(width = 3f))
+            drawLine(cyan, Offset(0f, -hh), Offset(0f, -hh - 38f), strokeWidth = 2.5f)
+            drawCircle(Color.White, radius = 10f, center = Offset(0f, -hh - 38f))
+            drawCircle(cyan, radius = 10f, center = Offset(0f, -hh - 38f), style = Stroke(width = 3f))
 
             // 4 corner handles + 4 edge handles
             val handles = listOf(
@@ -273,32 +305,32 @@ fun TransformGizmoOverlay(
                 Offset(0f, hh),
             )
             for (pt in handles) {
-                drawCircle(Color.White, radius = 8.5f, center = pt)
-                drawCircle(cyan, radius = 8.5f, center = pt, style = Stroke(width = 2.5f))
+                drawCircle(Color.White, radius = 8f, center = pt)
+                drawCircle(cyan, radius = 8f, center = pt, style = Stroke(width = 2.5f))
             }
 
             // Pivot diamond
-            val px = ((primary.pivotX - 0.5) * w).toFloat()
-            val py = ((primary.pivotY - 0.5) * h).toFloat()
+            val px = ((p.pivotX - 0.5) * w).toFloat()
+            val py = ((p.pivotY - 0.5) * h).toFloat()
             val diamond = Path().apply {
-                moveTo(px, py - 10f)
-                lineTo(px + 10f, py)
-                lineTo(px, py + 10f)
-                lineTo(px - 10f, py)
+                moveTo(px, py - 9f)
+                lineTo(px + 9f, py)
+                lineTo(px, py + 9f)
+                lineTo(px - 9f, py)
                 close()
             }
             drawPath(diamond, color = amber)
             drawPath(diamond, color = Color.Black, style = Stroke(width = 1.5f))
 
             // Parametric shape handle
-            if (primary.objType == "shape") {
-                val sp = Offset(-hw + 24f, -hh + 24f)
+            if (p.objType == "shape") {
+                val sp = Offset(-hw + 22f, -hh + 22f)
                 drawCircle(amber, radius = 7.5f, center = sp)
                 drawCircle(Color.White, radius = 7.5f, center = sp, style = Stroke(width = 2f))
             }
 
             // Gradient vector gizmo if enabled
-            val grad = primary.gradient
+            val grad = p.gradient
             if (grad?.enabled == true) {
                 val g0 = Offset(((grad.p0x - 0.5) * w).toFloat(), ((grad.p0y - 0.5) * h).toFloat())
                 val g1 = Offset(((grad.p1x - 0.5) * w).toFloat(), ((grad.p1y - 0.5) * h).toFloat())

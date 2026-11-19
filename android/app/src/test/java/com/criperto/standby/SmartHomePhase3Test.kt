@@ -75,7 +75,18 @@ class SmartHomePhase3Test {
         val stateOn = SmartDeviceStateDto(isOn = true, r = 255, g = 128, b = 0)
         assertEquals("#ff8000", WizColorMath.stateToHex(stateOn))
         val stateOff = SmartDeviceStateDto(isOn = false, r = 255, g = 128, b = 0)
-        assertEquals("#555555", WizColorMath.stateToHex(stateOff))
+        assertEquals("#485262", WizColorMath.stateToHex(stateOff))
+
+        // Firmware residual RGB must NOT override active 'Luz diurna' (sceneId = 12)
+        val stateDaylightWithResidualPink = SmartDeviceStateDto(
+            isOn = true,
+            sceneId = 12,
+            r = 255,
+            g = 0,
+            b = 180,
+        )
+        assertEquals("#EEF6FF", WizColorMath.stateToHex(stateDaylightWithResidualPink))
+        assertEquals("Luz diurna", WizColorMath.stateModeLabel(stateDaylightWithResidualPink))
     }
 
     @Test

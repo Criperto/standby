@@ -95,7 +95,7 @@ class EditorPhase4Test {
     }
 
     @Test
-    fun pureVisualBoxAccountsForPivotOffset() {
+    fun pureVisualBoxAccountsForPivotOffsetAndViewportScale() {
         val obj = SceneObject(
             id = "test_piv",
             posXRatio = 0.5,
@@ -106,11 +106,18 @@ class EditorPhase4Test {
             pivotY = 0.0,
             rotation = 0.0,
         )
-        val box = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 1000.0, 500.0)
-        assertEquals(500.0, box.anchorX, 0.01)
-        assertEquals(250.0, box.anchorY, 0.01)
-        // With pivot at top-left (0,0), visual center is shifted by (+W/2, +H/2)
-        assertEquals(600.0, box.visualCenterX, 0.01)
-        assertEquals(300.0, box.visualCenterY, 0.01)
+        // Reference 1920x1080 -> vScale = 1.0
+        val boxRef = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 1920.0, 1080.0)
+        assertEquals(960.0, boxRef.anchorX, 0.01)
+        assertEquals(540.0, boxRef.anchorY, 0.01)
+        assertEquals(1060.0, boxRef.visualCenterX, 0.01)
+        assertEquals(590.0, boxRef.visualCenterY, 0.01)
+
+        // Half resolution 960x540 -> vScale = 0.5 -> width=100, height=50
+        val boxHalf = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 960.0, 540.0)
+        assertEquals(480.0, boxHalf.anchorX, 0.01)
+        assertEquals(270.0, boxHalf.anchorY, 0.01)
+        assertEquals(530.0, boxHalf.visualCenterX, 0.01)
+        assertEquals(295.0, boxHalf.visualCenterY, 0.01)
     }
 }

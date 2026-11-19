@@ -2,7 +2,6 @@ package com.criperto.standby.editor.canvas
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.criperto.standby.StandByApplication
+import com.criperto.standby.core.SceneObject
 import com.criperto.standby.editor.EditorUiState
 import com.criperto.standby.editor.EditorViewModel
 import com.criperto.standby.renderer.CutoutDiskCache
@@ -74,7 +75,7 @@ fun EditorCanvas(
                     }
                 }
             }
-            .padding(10.dp),
+            .padding(8.dp),
         contentAlignment = Alignment.Center,
     ) {
         BoxWithConstraints(
@@ -100,6 +101,34 @@ fun EditorCanvas(
                 }
             }
 
+            fun hitTestObjectAt(tapPos: Offset): SceneObject? {
+                val candidates = uiState.preset.objects
+                    .filter { it.visible && !it.locked && it.objType != "wallpaper_mask" }
+                    .sortedByDescending { it.zIndex }
+                    .filter { candidate ->
+                        val box = viewModel.resolveWorldTransform(
+                            candidate,
+                            uiState.preset.objects,
+                            sw.toDouble(),
+                            sh.toDouble(),
+                        )
+                        val dx = tapPos.x - box.visualCenterX
+                        val dy = tapPos.y - box.visualCenterY
+                        val rad = Math.toRadians(-box.rotationDeg)
+                        val lx = dx * cos(rad) - dy * sin(rad)
+                        val ly = dx * sin(rad) + dy * cos(rad)
+                        val hw = box.width.coerceAtLeast(28.0) / 2.0 + 8.0
+                        val hh = box.height.coerceAtLeast(28.0) / 2.0 + 8.0
+                        lx in -hw..hw && ly in -hh..hh
+                    }
+                if (candidates.isEmpty()) return null
+                // If user taps an area with overlapping objects and the topmost is already selected, cycle to the next underneath!
+                if (candidates.size > 1 && candidates.first().id == primary?.id) {
+                    return candidates[1]
+                }
+                return candidates.first()
+            }
+
             SceneRenderer(
                 preset = uiState.preset,
                 signals = effectiveSignals,
@@ -108,32 +137,7 @@ fun EditorCanvas(
                 depthMask = depthMask,
                 interactive = false,
                 overrideObjects = uiState.preset.objects,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(uiState.preset.objects, sw, sh, uiState.multiSelectMode) {
-                        detectTapGestures { tapPos ->
-                            val hit = uiState.preset.objects
-                                .filter { it.visible && !it.locked }
-                                .sortedByDescending { it.zIndex }
-                                .firstOrNull { candidate ->
-                                    val box = viewModel.resolveWorldTransform(
-                                        candidate,
-                                        uiState.preset.objects,
-                                        sw.toDouble(),
-                                        sh.toDouble(),
-                                    )
-                                    val dx = tapPos.x - box.visualCenterX
-                                    val dy = tapPos.y - box.visualCenterY
-                                    val rad = Math.toRadians(-box.rotationDeg)
-                                    val lx = dx * cos(rad) - dy * sin(rad)
-                                    val ly = dx * sin(rad) + dy * cos(rad)
-                                    val hw = box.width.coerceAtLeast(32.0) / 2.0
-                                    val hh = box.height.coerceAtLeast(32.0) / 2.0
-                                    lx in -hw..hw && ly in -hh..hh
-                                }
-                            viewModel.selectObject(hit?.id)
-                        }
-                    },
+                modifier = Modifier.fillMaxSize(),
             )
 
             CompositionGuidesOverlay(visible = uiState.showCompositionGuides)
@@ -153,6 +157,8 @@ fun EditorCanvas(
                 worldBox = primaryBox,
                 screenW = sw,
                 screenH = sh,
+                onHitTestObjectAt = { pt -> hitTestObjectAt(pt) },
+                onSelectObject = { id -> viewModel.selectObject(id) },
                 onBeginDrag = { viewModel.beginDragTransaction() },
                 onEndDrag = { viewModel.endDragTransaction() },
                 onMoveBy = { dx, dy -> viewModel.dragMoveSelected(dx, dy, sw, sh) },

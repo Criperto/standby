@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -15,12 +14,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,11 +59,15 @@ fun SmartHomeHubOverlay(
     var editingDeviceId by remember { mutableStateOf<String?>(null) }
     var showAddIp by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        controller.refreshAllStates()
+    }
+
     Card(
         modifier = Modifier
-            .widthIn(max = 760.dp)
-            .fillMaxWidth(0.92f)
-            .padding(16.dp),
+            .widthIn(max = 820.dp)
+            .fillMaxWidth(0.94f)
+            .padding(12.dp),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -111,7 +117,7 @@ fun SmartHomeHubOverlay(
                         Text("Buscar")
                     }
                     OutlinedButton(onClick = onExitStandBy) {
-                        Icon(Icons.Rounded.ExitToApp, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Salir")
                     }
@@ -131,11 +137,29 @@ fun SmartHomeHubOverlay(
                 Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
 
-            if (ui.favorites.isNotEmpty() && ui.devices.isNotEmpty()) {
+            if (ui.devices.isNotEmpty()) {
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    // Permanent 'Apagar todo' chip ALWAYS first
+                    AssistChip(
+                        onClick = {
+                            onInteractionPing()
+                            controller.applyFavorite(SmartHomeViewModel.PINNED_ALL_OFF)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.PowerSettingsNew,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        label = { Text("Apagar todo") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+                        ),
+                    )
                     ui.favorites.forEach { fav ->
                         AssistChip(
                             onClick = {
@@ -181,7 +205,7 @@ fun SmartHomeHubOverlay(
                 }
             } else {
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     items(ui.devices, key = { it.id }) { dev ->
@@ -191,6 +215,7 @@ fun SmartHomeHubOverlay(
                             device = dev,
                             state = st,
                             reachable = reach,
+                            scenes = ui.scenes,
                             compact = true,
                             onTogglePower = {
                                 onInteractionPing()
@@ -204,7 +229,7 @@ fun SmartHomeHubOverlay(
                                 onInteractionPing()
                                 editingDeviceId = dev.id
                             },
-                            modifier = Modifier.width(280.dp),
+                            modifier = Modifier.width(310.dp),
                         )
                     }
                 }

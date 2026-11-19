@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "name": "Apple Clima + Hogar WiZ",
+  "description": "Inspirado en el dashboard de Clima y HomeKit de Apple StandBy: temperatura de Rosario a la izquierda y 4 tarjetas de control WiZ + deslizador a la derecha.",
+  "author": "StandBy",
+  "background": {
+    "mode": "black",
+    "brightness": 0.35,
+    "blurRadius": 0.0,
+    "nightDimFactor": 0.45
+  },
+  "state": {},
+  "meta": {
+    "targetAspect": "16:9"
+  },
+  "objects": [
+    {
+      "id": "city_header",
+      "type": "custom_text",
+      "name": "Ciudad Automática",
+      "zIndex": 1,
+      "visible": true,
+      "posX_ratio": 0.25,
+      "posY_ratio": 0.16,
+      "baseWidth": 660,
+      "baseHeight": 84,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 48,
+      "fontWeight": 600,
+      "customContent": "$WEATHER_CITY ▴",
+      "textColorChoice": "white",
+      "textAlign": "left"
+    },
+    {
+      "id": "giant_temp",
+      "type": "weather_temp",
+      "name": "Temperatura Gigante",
+      "zIndex": 2,
+      "visible": true,
+      "posX_ratio": 0.25,
+      "posY_ratio": 0.41,
+      "baseWidth": 660,
+      "baseHeight": 320,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 250,
+      "fontWeight": 200,
+      "letterSpacing": -8,
+      "textColorChoice": "white",
+      "textAlign": "left"
+    },
+    {
+      "id": "weather_sun_icon",
+      "type": "weather_icon",
+      "name": "Icono Clima",
+      "zIndex": 3,
+      "visible": true,
+      "posX_ratio": 0.11,
+      "posY_ratio": 0.67,
+      "baseWidth": 72,
+      "baseHeight": 72,
+      "isCustomColor": true,
+      "customHex": "#FBBF24"
+    },
+    {
+      "id": "weather_cond_label",
+      "type": "custom_text",
+      "name": "Condición Clima",
+      "zIndex": 4,
+      "visible": true,
+      "posX_ratio": 0.25,
+      "posY_ratio": 0.77,
+      "baseWidth": 660,
+      "baseHeight": 74,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 46,
+      "fontWeight": 600,
+      "customContent": "$WEATHER_COND",
+      "textColorChoice": "white",
+      "textAlign": "left"
+    },
+    {
+      "id": "weather_hl_label",
+      "type": "custom_text",
+      "name": "Máxima y Mínima",
+      "zIndex": 5,
+      "visible": true,
+      "posX_ratio": 0.25,
+      "posY_ratio": 0.85,
+      "baseWidth": 660,
+      "baseHeight": 70,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 42,
+      "fontWeight": 500,
+      "customContent": "$WEATHER_HL  ·  $HOUR:$MINUTE",
+      "isCustomColor": true,
+      "customHex": "#8A94A6",
+      "textAlign": "left"
+    },
+    {
+      "id": "wiz_main_slider_tile",
+      "type": "wiz_button",
+      "name": "Tarjeta WiZ Principal (Tap / Deslizar %)",
+      "zIndex": 6,
+      "visible": true,
+      "posX_ratio": 0.71,
+      "posY_ratio": 0.27,
+      "baseWidth": 740,
+      "baseHeight": 230,
+      "wizDeviceId": "primary",
+      "wizAction": "toggle",
+      "hitbox": {
+        "enabled": true,
+        "mode": "rect",
+        "consume": true
+      },
+      "actions": {
+        "onTap": "wiz(toggle,primary)"
+      }
+    },
+    {
+      "id": "tile_daylight_bg",
+      "type": "shape",
+      "name": "Botón Luz Diurna Fondo",
+      "zIndex": 7,
+      "visible": true,
+      "posX_ratio": 0.60,
+      "posY_ratio": 0.66,
+      "baseWidth": 350,
+      "baseHeight": 270,
+      "shapeType": "rectangle",
+      "radiusUniform": 46,
+      "isCustomColor": true,
+      "customHex": "#F2F4F8",
+      "hitbox": {
+        "enabled": true,
+        "mode": "rect",
+        "consume": true
+      },
+      "actions": {
+        "onTap": "wiz(scene,primary,12)"
+      }
+    },
+    {
+      "id": "tile_daylight_txt",
+      "type": "custom_text",
+      "name": "Texto Luz Diurna",
+      "zIndex": 8,
+      "visible": true,
+      "posX_ratio": 0.60,
+      "posY_ratio": 0.66,
+      "baseWidth": 290,
+      "baseHeight": 190,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 36,
+      "fontWeight": 700,
+      "customContent": "Luz Diurna\nPor defecto",
+      "isCustomColor": true,
+      "customHex": "#141820",
+      "textAlign": "left",
+      "hitbox": {
+        "enabled": true,
+        "mode": "rect",
+        "consume": true
+      },
+      "actions": {
+        "onTap": "wiz(scene,primary,12)"
+      }
+    },
+    {
+      "id": "tile_warm_bg",
+      "type": "shape",
+      "name": "Botón Luz Cálida Fondo",
+      "zIndex": 9,
+      "visible": true,
+      "posX_ratio": 0.81,
+      "posY_ratio": 0.66,
+      "baseWidth": 350,
+      "baseHeight": 270,
+      "shapeType": "rectangle",
+      "radiusUniform": 46,
+      "isCustomColor": true,
+      "customHex": "#1F242D",
+      "hitbox": {
+        "enabled": true,
+        "mode": "rect",
+        "consume": true
+      },
+      "actions": {
+        "onTap": "wiz(scene,primary,11)"
+      }
+    },
+    {
+      "id": "tile_warm_txt",
+      "type": "custom_text",
+      "name": "Texto Luz Cálida",
+      "zIndex": 10,
+      "visible": true,
+      "posX_ratio": 0.81,
+      "posY_ratio": 0.66,
+      "baseWidth": 290,
+      "baseHeight": 190,
+      "customFontFamily": "SF Pro Display",
+      "baseFontSize": 36,
+      "fontWeight": 700,
+      "customContent": "Luz Cálida\nAmbiente",
+      "isCustomColor": true,
+      "customHex": "#FFD6A5",
+      "textAlign": "left",
+      "hitbox": {
+        "enabled": true,
+        "mode": "rect",
+        "consume": true
+      },
+      "actions": {
+        "onTap": "wiz(scene,primary,11)"
+      }
+    }
+  ]
+}

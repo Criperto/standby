@@ -3,18 +3,22 @@ package com.criperto.standby.editor
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.Undo
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,13 +47,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.criperto.standby.StandByApplication
 import com.criperto.standby.ai.AiCutoutPanel
 import com.criperto.standby.core.SceneObject
@@ -74,6 +82,7 @@ fun EditorScreen(
     val ui by viewModel.uiState.collectAsState()
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    var isPanelCollapsed by rememberSaveable { mutableStateOf(false) }
     var fontPickerTarget by remember { mutableStateOf<SceneObject?>(null) }
     var svgPickerTargetId by remember { mutableStateOf<String?>(null) }
     var missingFontIds by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -121,6 +130,8 @@ fun EditorScreen(
         EditorTopToolbar(
             uiState = ui,
             viewModel = viewModel,
+            isPanelCollapsed = isPanelCollapsed,
+            onToggleCollapse = { isPanelCollapsed = !isPanelCollapsed },
             onPreviewStandBy = {
                 viewModel.saveCurrentPreset {
                     context.startActivity(StandByActivity.createIntent(context, manualLaunch = true))
@@ -131,50 +142,100 @@ fun EditorScreen(
 
         if (isLandscape) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                EditorCanvas(
-                    app = app,
-                    viewModel = viewModel,
-                    uiState = ui,
-                    modifier = Modifier.weight(0.55f).fillMaxHeight(),
-                )
-                VerticalDivider()
-                Surface(
-                    modifier = Modifier.weight(0.45f).fillMaxHeight(),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                Box(
+                    modifier = Modifier
+                        .weight(if (isPanelCollapsed) 1f else 0.56f)
+                        .fillMaxHeight(),
                 ) {
-                    EditorBottomOrSideWorkspace(
+                    EditorCanvas(
                         app = app,
-                        uiState = ui,
                         viewModel = viewModel,
-                        onOpenFontPicker = onOpenFontPicker,
-                        onImportSvgForObject = onImportSvgForObject,
-                        onMissingFontsDetected = onMissingFontsDetected,
-                        aiCutoutPanel = aiCutoutPanel,
+                        uiState = ui,
+                        modifier = Modifier.fillMaxSize(),
                     )
+                    FilledTonalButton(
+                        onClick = { isPanelCollapsed = !isPanelCollapsed },
+                        shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 2.dp),
+                    ) {
+                        Text(
+                            text = if (isPanelCollapsed) "< Panel" else ">",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = !isPanelCollapsed) {
+                    Row(modifier = Modifier.fillMaxHeight().width(390.dp)) {
+                        VerticalDivider()
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            EditorBottomOrSideWorkspace(
+                                app = app,
+                                uiState = ui,
+                                viewModel = viewModel,
+                                onOpenFontPicker = onOpenFontPicker,
+                                onImportSvgForObject = onImportSvgForObject,
+                                onMissingFontsDetected = onMissingFontsDetected,
+                                aiCutoutPanel = aiCutoutPanel,
+                            )
+                        }
+                    }
                 }
             }
         } else {
             Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                EditorCanvas(
-                    app = app,
-                    viewModel = viewModel,
-                    uiState = ui,
-                    modifier = Modifier.weight(0.42f).fillMaxWidth(),
-                )
-                HorizontalDivider()
-                Surface(
-                    modifier = Modifier.weight(0.58f).fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                Box(
+                    modifier = Modifier
+                        .weight(if (isPanelCollapsed) 1f else 0.45f)
+                        .fillMaxWidth(),
                 ) {
-                    EditorBottomOrSideWorkspace(
+                    EditorCanvas(
                         app = app,
-                        uiState = ui,
                         viewModel = viewModel,
-                        onOpenFontPicker = onOpenFontPicker,
-                        onImportSvgForObject = onImportSvgForObject,
-                        onMissingFontsDetected = onMissingFontsDetected,
-                        aiCutoutPanel = aiCutoutPanel,
+                        uiState = ui,
+                        modifier = Modifier.fillMaxSize(),
                     )
+                    FilledTonalButton(
+                        onClick = { isPanelCollapsed = !isPanelCollapsed },
+                        shape = RoundedCornerShape(18.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(10.dp),
+                    ) {
+                        Text(
+                            text = if (isPanelCollapsed) "< Mostrar Opciones" else "< Ocultar Panel",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+
+                if (!isPanelCollapsed) {
+                    HorizontalDivider()
+                    Surface(
+                        modifier = Modifier
+                            .weight(0.55f)
+                            .fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        EditorBottomOrSideWorkspace(
+                            app = app,
+                            uiState = ui,
+                            viewModel = viewModel,
+                            onOpenFontPicker = onOpenFontPicker,
+                            onImportSvgForObject = onImportSvgForObject,
+                            onMissingFontsDetected = onMissingFontsDetected,
+                            aiCutoutPanel = aiCutoutPanel,
+                        )
+                    }
                 }
             }
         }
@@ -238,6 +299,8 @@ fun EditorScreen(
 private fun EditorTopToolbar(
     uiState: EditorUiState,
     viewModel: EditorViewModel,
+    isPanelCollapsed: Boolean,
+    onToggleCollapse: () -> Unit,
     onPreviewStandBy: () -> Unit,
 ) {
     Row(
@@ -252,12 +315,22 @@ private fun EditorTopToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            FilterChip(
+                selected = isPanelCollapsed,
+                onClick = onToggleCollapse,
+                label = {
+                    Text(
+                        text = if (isPanelCollapsed) "> Panel" else "< Lienzo",
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+            )
             Text(
                 text = uiState.preset.name + (if (uiState.dirty) " *" else ""),
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(end = 6.dp),
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
             IconButton(
                 enabled = uiState.undoCount > 0,

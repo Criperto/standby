@@ -18,10 +18,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -36,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +63,10 @@ fun SmartHomeScreen(
     var showAddIp by remember { mutableStateOf(false) }
     var editingDeviceId by remember { mutableStateOf<String?>(null) }
     var renamingDevice by remember { mutableStateOf<WizDeviceConfig?>(null) }
+
+    LaunchedEffect(Unit) {
+        controller.refreshAllStates()
+    }
 
     val filteredDevices = remember(ui.devices, selectedRoom) {
         if (selectedRoom == null) ui.devices else ui.devices.filter { it.room == selectedRoom }
@@ -141,32 +148,46 @@ fun SmartHomeScreen(
             }
         }
 
-        if (ui.favorites.isNotEmpty()) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        "Accesos rápidos (1 toque)",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        ui.favorites.forEach { fav ->
-                            InputChip(
-                                selected = false,
-                                onClick = { controller.applyFavorite(fav) },
-                                label = { Text(fav.name) },
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = { controller.removeFavorite(fav.id) },
-                                    ) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "Eliminar favorito")
-                                    }
-                                },
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Accesos rápidos (1 toque)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Permanent 'Apagar todo' chip ALWAYS first and non-deletable
+                    AssistChip(
+                        onClick = { controller.applyFavorite(SmartHomeViewModel.PINNED_ALL_OFF) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Rounded.PowerSettingsNew,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
                             )
-                        }
+                        },
+                        label = { Text("Apagar todo") },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+                        ),
+                    )
+                    ui.favorites.forEach { fav ->
+                        InputChip(
+                            selected = false,
+                            onClick = { controller.applyFavorite(fav) },
+                            label = { Text(fav.name) },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { controller.removeFavorite(fav.id) },
+                                ) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Eliminar favorito")
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -219,6 +240,7 @@ fun SmartHomeScreen(
                     device = dev,
                     state = ui.statesByDeviceId[dev.id] ?: SmartDeviceStateDto(),
                     reachable = ui.reachableByDeviceId[dev.id] ?: true,
+                    scenes = ui.scenes,
                     onTogglePower = { controller.setPower(dev.id, it) },
                     onBrightnessChange = { controller.setBrightness(dev.id, it) },
                     onOpenControls = { editingDeviceId = dev.id },

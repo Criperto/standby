@@ -84,6 +84,10 @@ class StandByActivity : ComponentActivity() {
                         StandByMonitorService.notifyManualDismiss(manualLaunch)
                         finish()
                     },
+                    onOrientationAutoExit = {
+                        // Do NOT mark as manually dismissed so rotating back to horizontal re-opens StandBy
+                        finish()
+                    },
                 )
             }
         }

@@ -34,6 +34,13 @@ object SystemFontsScanner {
     fun scanDeviceFonts(dirs: List<String> = defaultDirs): List<SystemFontEntry> {
         val byFamily = linkedMapOf<String, SystemFontEntry>()
 
+        // Bundled Apple SF Pro Display (9 weights integrated in APK assets)
+        byFamily["SF Pro Display (Apple StandBy)"] = SystemFontEntry(
+            familyName = "SF Pro Display",
+            fileName = "SF-Pro-Display-Bold.otf",
+            absolutePath = "",
+        )
+
         // Built-in Android generic families always available
         listOf(
             "sans-serif" to "Sans Serif (Android)",

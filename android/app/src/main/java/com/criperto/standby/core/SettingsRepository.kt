@@ -16,10 +16,10 @@ import kotlinx.coroutines.flow.map
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "standby_settings")
 
 data class AppSettings(
-    val activePresetName: String = "standby_split",
+    val activePresetName: String = "apple_standby_duotone",
     // Trigger & runtime
     val triggersEnabled: Boolean = true,
-    val autoTriggerServiceEnabled: Boolean = false,
+    val autoTriggerServiceEnabled: Boolean = true,
     val dreamServiceEnabled: Boolean = true,
     val chargingReq: String = "any_charging", // any_charging | ac_only | usb_only | wireless_only | always_ignore_charging
     val orientationReq: String = "landscape_only", // landscape_only | any_orientation
@@ -52,11 +52,12 @@ data class AppSettings(
     // Tap-to-Wake Smart Home Hub
     val tapToWakeEnabled: Boolean = true,
     val autoReturnSec: Int = 25,
-    // Optional Open-Meteo Weather
-    val weatherEnabled: Boolean = false,
-    val weatherCity: String = "Buenos Aires",
-    val weatherLat: Double = -34.6037,
-    val weatherLon: Double = -58.3816,
+    // Automatic & Live Open-Meteo Weather
+    val weatherEnabled: Boolean = true,
+    val weatherAutoLocation: Boolean = true,
+    val weatherCity: String = "Rosario",
+    val weatherLat: Double = -32.9468,
+    val weatherLon: Double = -60.6393,
 ) {
     fun toTriggerRulesDto(): TriggerRulesDto {
         val windows = if (timeWindowEnabled) {
@@ -130,6 +131,7 @@ class SettingsRepository(private val context: Context) {
         val AUTO_RETURN_SEC = intPreferencesKey("auto_return_sec")
 
         val WEATHER_ENABLED = booleanPreferencesKey("weather_enabled")
+        val WEATHER_AUTO_LOC = booleanPreferencesKey("weather_auto_location")
         val WEATHER_CITY = stringPreferencesKey("weather_city")
         val WEATHER_LAT = doublePreferencesKey("weather_lat")
         val WEATHER_LON = doublePreferencesKey("weather_lon")
@@ -142,9 +144,9 @@ class SettingsRepository(private val context: Context) {
         }.getOrDefault(emptyList())
 
         AppSettings(
-            activePresetName = p[Keys.ACTIVE_PRESET] ?: "standby_split",
+            activePresetName = p[Keys.ACTIVE_PRESET] ?: "apple_standby_duotone",
             triggersEnabled = p[Keys.TRIGGERS_ENABLED] ?: true,
-            autoTriggerServiceEnabled = p[Keys.AUTO_TRIGGER_SERVICE] ?: false,
+            autoTriggerServiceEnabled = p[Keys.AUTO_TRIGGER_SERVICE] ?: true,
             dreamServiceEnabled = p[Keys.DREAM_SERVICE] ?: true,
             chargingReq = p[Keys.CHARGING_REQ] ?: "any_charging",
             orientationReq = p[Keys.ORIENTATION_REQ] ?: "landscape_only",
@@ -173,19 +175,20 @@ class SettingsRepository(private val context: Context) {
             nightBlackoutEnabled = p[Keys.NIGHT_BLACKOUT] ?: true,
             tapToWakeEnabled = p[Keys.TAP_TO_WAKE] ?: true,
             autoReturnSec = p[Keys.AUTO_RETURN_SEC] ?: 25,
-            weatherEnabled = p[Keys.WEATHER_ENABLED] ?: false,
-            weatherCity = p[Keys.WEATHER_CITY] ?: "Buenos Aires",
-            weatherLat = p[Keys.WEATHER_LAT] ?: -34.6037,
-            weatherLon = p[Keys.WEATHER_LON] ?: -58.3816,
+            weatherEnabled = p[Keys.WEATHER_ENABLED] ?: true,
+            weatherAutoLocation = p[Keys.WEATHER_AUTO_LOC] ?: true,
+            weatherCity = p[Keys.WEATHER_CITY] ?: "Rosario",
+            weatherLat = p[Keys.WEATHER_LAT] ?: -32.9468,
+            weatherLon = p[Keys.WEATHER_LON] ?: -60.6393,
         )
     }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.settingsDataStore.edit { prefs ->
             val current = AppSettings(
-                activePresetName = prefs[Keys.ACTIVE_PRESET] ?: "standby_split",
+                activePresetName = prefs[Keys.ACTIVE_PRESET] ?: "apple_standby_duotone",
                 triggersEnabled = prefs[Keys.TRIGGERS_ENABLED] ?: true,
-                autoTriggerServiceEnabled = prefs[Keys.AUTO_TRIGGER_SERVICE] ?: false,
+                autoTriggerServiceEnabled = prefs[Keys.AUTO_TRIGGER_SERVICE] ?: true,
                 dreamServiceEnabled = prefs[Keys.DREAM_SERVICE] ?: true,
                 chargingReq = prefs[Keys.CHARGING_REQ] ?: "any_charging",
                 orientationReq = prefs[Keys.ORIENTATION_REQ] ?: "landscape_only",
@@ -216,10 +219,11 @@ class SettingsRepository(private val context: Context) {
                 nightBlackoutEnabled = prefs[Keys.NIGHT_BLACKOUT] ?: true,
                 tapToWakeEnabled = prefs[Keys.TAP_TO_WAKE] ?: true,
                 autoReturnSec = prefs[Keys.AUTO_RETURN_SEC] ?: 25,
-                weatherEnabled = prefs[Keys.WEATHER_ENABLED] ?: false,
-                weatherCity = prefs[Keys.WEATHER_CITY] ?: "Buenos Aires",
-                weatherLat = prefs[Keys.WEATHER_LAT] ?: -34.6037,
-                weatherLon = prefs[Keys.WEATHER_LON] ?: -58.3816,
+                weatherEnabled = prefs[Keys.WEATHER_ENABLED] ?: true,
+                weatherAutoLocation = prefs[Keys.WEATHER_AUTO_LOC] ?: true,
+                weatherCity = prefs[Keys.WEATHER_CITY] ?: "Rosario",
+                weatherLat = prefs[Keys.WEATHER_LAT] ?: -32.9468,
+                weatherLon = prefs[Keys.WEATHER_LON] ?: -60.6393,
             )
             val next = transform(current)
             prefs[Keys.ACTIVE_PRESET] = next.activePresetName
@@ -254,6 +258,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.TAP_TO_WAKE] = next.tapToWakeEnabled
             prefs[Keys.AUTO_RETURN_SEC] = next.autoReturnSec.coerceIn(5, 300)
             prefs[Keys.WEATHER_ENABLED] = next.weatherEnabled
+            prefs[Keys.WEATHER_AUTO_LOC] = next.weatherAutoLocation
             prefs[Keys.WEATHER_CITY] = next.weatherCity
             prefs[Keys.WEATHER_LAT] = next.weatherLat
             prefs[Keys.WEATHER_LON] = next.weatherLon

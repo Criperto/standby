@@ -441,8 +441,9 @@ object SceneObjectOps {
         screenW: Double,
         screenH: Double,
     ): WorldTransformDto {
-        val w = (obj.baseWidth * obj.scaleX * obj.uniformScale).coerceAtLeast(16.0)
-        val h = (obj.baseHeight * obj.scaleY * obj.uniformScale).coerceAtLeast(16.0)
+        val vScale = min(screenW / 1920.0, screenH / 1080.0).coerceAtLeast(0.1)
+        val w = (obj.baseWidth * vScale * obj.scaleX * obj.uniformScale).coerceAtLeast(16.0)
+        val h = (obj.baseHeight * vScale * obj.scaleY * obj.uniformScale).coerceAtLeast(16.0)
         val parent = obj.groupId?.let { gid -> objects.firstOrNull { it.id == gid } }
         val anchorX: Double
         val anchorY: Double
@@ -451,8 +452,10 @@ object SceneObjectOps {
             val px = parent.posXRatio * screenW
             val py = parent.posYRatio * screenH
             val rad = Math.toRadians(parent.rotation)
-            val rx = obj.groupOffsetX * cos(rad) - obj.groupOffsetY * sin(rad)
-            val ry = obj.groupOffsetX * sin(rad) + obj.groupOffsetY * cos(rad)
+            val ox = obj.groupOffsetX * vScale * parent.scaleX * parent.uniformScale
+            val oy = obj.groupOffsetY * vScale * parent.scaleY * parent.uniformScale
+            val rx = ox * cos(rad) - oy * sin(rad)
+            val ry = ox * sin(rad) + oy * cos(rad)
             anchorX = px + rx
             anchorY = py + ry
             rotDeg = parent.rotation + obj.rotation
@@ -1119,18 +1122,7 @@ class EditorViewModel(private val app: StandByApplication) {
         screenW: Double,
         screenH: Double,
     ): WorldTransformDto {
-        return runCatching {
-            val json = getObjectWorldTransformJson(
-                objJson = AppJson.encodeToString(obj),
-                objectsJson = AppJson.encodeToString(objects),
-                screenW = screenW,
-                screenH = screenH,
-                isAnimating = false,
-            )
-            AppJson.decodeFromString<WorldTransformDto>(json)
-        }.getOrElse {
-            SceneObjectOps.computePureVisualBox(obj, objects, screenW, screenH)
-        }
+        return SceneObjectOps.computePureVisualBox(obj, objects, screenW, screenH)
     }
 
     fun validateExpression(expr: String): String? {
