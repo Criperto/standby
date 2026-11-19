@@ -457,7 +457,7 @@ fun SettingsScreen(
                 LabeledSlider(
                     label = "Frecuencia de cámara IA: cada ${settings.cameraPollIntervalSec} s",
                     value = settings.cameraPollIntervalSec.toFloat(),
-                    range = 2f..60f,
+                    range = 1f..60f,
                     onValueChange = { v -> updateSettings { it.copy(cameraPollIntervalSec = v.roundToInt()) } },
                 )
                 LabeledSlider(
@@ -582,7 +582,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = "Autor: Criperto · Versión 0.4.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
+                    text = "Autor: Criperto · Versión 0.5.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

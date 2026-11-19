@@ -291,7 +291,7 @@ data class TriggerRulesDto(
     val darkThresholdLux: Float = 8.0f,
     val luxHysteresis: Float = 3.0f,
     val sleepDelaySec: Int = 20,
-    val cameraPollIntervalSec: Int = 5,
+    val cameraPollIntervalSec: Int = 1,
     val nightBlackoutEnabled: Boolean = true,
 )
 
@@ -311,6 +311,7 @@ data class TriggerSnapshotDto(
     val hubOpen: Boolean = false,
     val manualLaunch: Boolean = false,
     val prevDarkRoom: Boolean = false,
+    val prevBlackout: Boolean = false,
 )
 
 @Serializable

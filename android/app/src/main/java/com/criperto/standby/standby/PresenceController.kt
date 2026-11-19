@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.media.FaceDetector
+import android.os.Handler
+import android.os.Looper
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -23,6 +25,8 @@ import java.io.File
 import java.nio.FloatBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.exp
 
 data class PresenceState(
@@ -36,17 +40,26 @@ class PresenceController(private val context: Context) {
     val state: StateFlow<PresenceState> = _state.asStateFlow()
 
     private val analyzerExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var cameraProvider: ProcessCameraProvider? = null
-    private var isBound = false
+
+    /** True while the periodic "snapshot" loop is scheduled (camera itself is only open for a split second). */
+    @Volatile
+    private var pollingEnabled = false
 
     @Volatile
-    private var lastAnalysisMs: Long = 0L
+    private var captureInFlight = false
 
     @Volatile
-    private var pollIntervalMs: Long = 5_000L
+    private var pollIntervalMs: Long = 1_000L
+
+    private var lifecycleOwnerRef: LifecycleOwner? = null
+    private var captureSeq = 0L
 
     private var ortEnv: OrtEnvironment? = null
     private var yunetSession: OrtSession? = null
+
+    private val captureTick = Runnable { runCaptureCycle() }
 
     fun hasCameraPermission(): Boolean {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -59,24 +72,62 @@ class PresenceController(private val context: Context) {
         )
     }
 
+    /** Seeds the "last presence" so a restarted controller does not fake a recent presence. */
+    fun seedLastPresence(epochMs: Long) {
+        _state.value = _state.value.copy(lastPresenceEpochMs = epochMs)
+    }
+
     fun updatePolling(
         lifecycleOwner: LifecycleOwner,
         shouldPollCamera: Boolean,
         intervalSec: Int,
     ) {
-        pollIntervalMs = (intervalSec.coerceIn(2, 60) * 1000L)
+        pollIntervalMs = (intervalSec.coerceIn(1, 60) * 1000L)
+        lifecycleOwnerRef = lifecycleOwner
         if (!shouldPollCamera || !hasCameraPermission()) {
             stopCamera()
             return
         }
-        if (isBound) return
-        startCamera(lifecycleOwner)
+        if (pollingEnabled) return
+        pollingEnabled = true
+        mainHandler.removeCallbacks(captureTick)
+        mainHandler.post(captureTick)
     }
 
-    private fun startCamera(lifecycleOwner: LifecycleOwner) {
+    /**
+     * Opens the camera, grabs ONE analysed frame (after a short AE warm-up) and releases it right away.
+     * Keeping the camera open 24/7 gets it revoked by Android (privacy indicator disappears), so we only
+     * hold it for a few hundred ms per cycle.
+     */
+    private fun runCaptureCycle() {
+        if (!pollingEnabled) return
+        val owner = lifecycleOwnerRef
+        if (owner == null || captureInFlight) {
+            scheduleNextCycle()
+            return
+        }
+        captureInFlight = true
+        val seq = ++captureSeq
+        val finished = AtomicBoolean(false)
+        val frameCounter = AtomicInteger(0)
+
+        fun finishCycle() {
+            if (!finished.compareAndSet(false, true)) return
+            mainHandler.post {
+                runCatching { cameraProvider?.unbindAll() }
+                _state.value = _state.value.copy(cameraActive = false)
+                captureInFlight = false
+                scheduleNextCycle()
+            }
+        }
+
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
-            runCatching {
+            if (!pollingEnabled || seq != captureSeq) {
+                captureInFlight = false
+                return@addListener
+            }
+            val ok = runCatching {
                 val provider = future.get()
                 cameraProvider = provider
                 val analysis = ImageAnalysis.Builder()
@@ -86,30 +137,56 @@ class PresenceController(private val context: Context) {
                     .build()
 
                 analysis.setAnalyzer(analyzerExecutor) { image ->
+                    if (finished.get()) {
+                        image.close()
+                        return@setAnalyzer
+                    }
+                    // Skip first frames so auto-exposure converges (important in a dark room)
+                    if (frameCounter.incrementAndGet() <= WARMUP_FRAMES) {
+                        image.close()
+                        return@setAnalyzer
+                    }
                     processFrame(image)
+                    finishCycle()
                 }
 
                 provider.unbindAll()
                 provider.bindToLifecycle(
-                    lifecycleOwner,
+                    owner,
                     CameraSelector.DEFAULT_FRONT_CAMERA,
                     analysis,
                 )
-                isBound = true
                 _state.value = _state.value.copy(cameraActive = true)
+            }.isSuccess
+            if (!ok) {
+                finishCycle()
+            } else {
+                // Watchdog: never keep the camera open longer than a few seconds
+                mainHandler.postDelayed({ finishCycle() }, CAPTURE_WATCHDOG_MS)
             }
         }, ContextCompat.getMainExecutor(context))
     }
 
+    private fun scheduleNextCycle() {
+        mainHandler.removeCallbacks(captureTick)
+        if (pollingEnabled) {
+            mainHandler.postDelayed(captureTick, pollIntervalMs)
+        }
+    }
+
     fun stopCamera() {
-        if (!isBound && cameraProvider == null) return
+        pollingEnabled = false
+        captureSeq++
+        mainHandler.removeCallbacks(captureTick)
         runCatching {
-            ContextCompat.getMainExecutor(context).execute {
+            mainHandler.post {
                 runCatching { cameraProvider?.unbindAll() }
+                captureInFlight = false
             }
         }
-        isBound = false
-        _state.value = _state.value.copy(cameraActive = false)
+        if (_state.value.cameraActive) {
+            _state.value = _state.value.copy(cameraActive = false)
+        }
     }
 
     fun shutdown() {
@@ -122,8 +199,6 @@ class PresenceController(private val context: Context) {
     private fun processFrame(image: ImageProxy) {
         try {
             val now = System.currentTimeMillis()
-            if (now - lastAnalysisMs < pollIntervalMs) return
-            lastAnalysisMs = now
 
             val rawBmp = image.toBitmap()
             val rotDeg = image.imageInfo.rotationDegrees
@@ -149,6 +224,11 @@ class PresenceController(private val context: Context) {
         } finally {
             image.close()
         }
+    }
+
+    companion object {
+        private const val WARMUP_FRAMES = 3
+        private const val CAPTURE_WATCHDOG_MS = 3_500L
     }
 
     private fun detectWithAndroidFaceDetector(bmp: Bitmap): Boolean {

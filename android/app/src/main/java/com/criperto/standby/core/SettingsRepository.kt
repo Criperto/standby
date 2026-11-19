@@ -46,7 +46,7 @@ data class AppSettings(
     val presenceMode: String = "disabled", // disabled | light_only | face_only | face_or_light | face_and_light
     val darkThresholdLux: Float = 8f,
     val luxHysteresis: Float = 3f,
-    val cameraPollIntervalSec: Int = 5,
+    val cameraPollIntervalSec: Int = 1,
     val sleepDelaySec: Int = 20,
     val nightBlackoutEnabled: Boolean = true,
     // Tap-to-Wake Smart Home Hub
@@ -123,7 +123,7 @@ class SettingsRepository(private val context: Context) {
         val PRESENCE_MODE = stringPreferencesKey("presence_mode")
         val DARK_LUX = floatPreferencesKey("dark_lux")
         val LUX_HYST = floatPreferencesKey("lux_hyst")
-        val CAMERA_POLL_SEC = intPreferencesKey("camera_poll_sec")
+        val CAMERA_POLL_SEC = intPreferencesKey("camera_poll_sec_v2")
         val SLEEP_DELAY_SEC = intPreferencesKey("sleep_delay_sec")
         val NIGHT_BLACKOUT = booleanPreferencesKey("night_blackout")
 
@@ -170,7 +170,7 @@ class SettingsRepository(private val context: Context) {
             presenceMode = p[Keys.PRESENCE_MODE] ?: "disabled",
             darkThresholdLux = p[Keys.DARK_LUX] ?: 8f,
             luxHysteresis = p[Keys.LUX_HYST] ?: 3f,
-            cameraPollIntervalSec = p[Keys.CAMERA_POLL_SEC] ?: 5,
+            cameraPollIntervalSec = p[Keys.CAMERA_POLL_SEC] ?: 1,
             sleepDelaySec = p[Keys.SLEEP_DELAY_SEC] ?: 20,
             nightBlackoutEnabled = p[Keys.NIGHT_BLACKOUT] ?: true,
             tapToWakeEnabled = p[Keys.TAP_TO_WAKE] ?: true,
@@ -214,7 +214,7 @@ class SettingsRepository(private val context: Context) {
                 presenceMode = prefs[Keys.PRESENCE_MODE] ?: "disabled",
                 darkThresholdLux = prefs[Keys.DARK_LUX] ?: 8f,
                 luxHysteresis = prefs[Keys.LUX_HYST] ?: 3f,
-                cameraPollIntervalSec = prefs[Keys.CAMERA_POLL_SEC] ?: 5,
+                cameraPollIntervalSec = prefs[Keys.CAMERA_POLL_SEC] ?: 1,
                 sleepDelaySec = prefs[Keys.SLEEP_DELAY_SEC] ?: 20,
                 nightBlackoutEnabled = prefs[Keys.NIGHT_BLACKOUT] ?: true,
                 tapToWakeEnabled = prefs[Keys.TAP_TO_WAKE] ?: true,
@@ -252,7 +252,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.PRESENCE_MODE] = next.presenceMode
             prefs[Keys.DARK_LUX] = next.darkThresholdLux.coerceIn(0.5f, 100f)
             prefs[Keys.LUX_HYST] = next.luxHysteresis.coerceIn(0.5f, 30f)
-            prefs[Keys.CAMERA_POLL_SEC] = next.cameraPollIntervalSec.coerceIn(2, 60)
+            prefs[Keys.CAMERA_POLL_SEC] = next.cameraPollIntervalSec.coerceIn(1, 60)
             prefs[Keys.SLEEP_DELAY_SEC] = next.sleepDelaySec.coerceIn(5, 300)
             prefs[Keys.NIGHT_BLACKOUT] = next.nightBlackoutEnabled
             prefs[Keys.TAP_TO_WAKE] = next.tapToWakeEnabled

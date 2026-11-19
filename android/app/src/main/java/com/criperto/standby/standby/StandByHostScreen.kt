@@ -152,23 +152,53 @@ fun StandByHostScreen(
         }
     }
 
+    // Restore the last known blackout / dark-room state so that a restart (e.g. after Android revoked
+    // the camera) does not flash the screen ON in a pitch-black room before presence is re-checked.
+    val runtimePrefs = remember {
+        context.applicationContext.getSharedPreferences("standby_runtime", android.content.Context.MODE_PRIVATE)
+    }
+    val restoredBlackout = remember { runtimePrefs.getBoolean("last_blackout", false) }
+    val restoredDark = remember { runtimePrefs.getBoolean("last_dark_room", false) }
+
     var hubOpen by remember { mutableStateOf(false) }
     var lastHubInteractionMs by remember { mutableLongStateOf(0L) }
     var remainingSec by remember { mutableIntStateOf(0) }
 
-    var prevDarkRoom by remember { mutableStateOf(false) }
+    var prevDarkRoom by remember { mutableStateOf(restoredDark || restoredBlackout) }
     var decision by remember {
         mutableStateOf(
-            StandByDecisionDto(
-                shouldBeActive = true,
-                displayMode = "active",
-                targetBrightness = 0.28f,
-            )
+            if (restoredBlackout && !manualLaunch) {
+                StandByDecisionDto(
+                    shouldBeActive = true,
+                    displayMode = "amoled_blackout",
+                    targetBrightness = 0.01f,
+                    isDarkRoom = true,
+                )
+            } else {
+                StandByDecisionDto(
+                    shouldBeActive = true,
+                    displayMode = "active",
+                    targetBrightness = 0.28f,
+                )
+            }
         )
+    }
+    LaunchedEffect(restoredBlackout) {
+        if (restoredBlackout && !manualLaunch) {
+            // Do not trust "recent presence" from a fresh controller: require a new positive signal
+            presenceController.seedLastPresence(0L)
+        }
+    }
+    LaunchedEffect(decision.displayMode, decision.isDarkRoom) {
+        runtimePrefs.edit()
+            .putBoolean("last_blackout", decision.displayMode == "amoled_blackout")
+            .putBoolean("last_dark_room", decision.isDarkRoom)
+            .apply()
     }
 
     LaunchedEffect(
         settings,
+        signals.nowEpochMs,
         signals.localMinuteOfDay,
         signals.isCharging,
         signals.chargeSource,
@@ -193,6 +223,7 @@ fun StandByHostScreen(
             hubOpen = hubOpen,
             manualLaunch = manualLaunch,
             prevDarkRoom = prevDarkRoom,
+            prevBlackout = decision.displayMode == "amoled_blackout",
         )
         val snapJson = runCatching { AppJson.encodeToString(snapshot) }.getOrNull()
         if (rulesJson != null && snapJson != null) {

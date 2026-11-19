@@ -118,7 +118,7 @@ impl Default for TriggerRules {
             dark_threshold_lux: 8.0,
             lux_hysteresis: 3.0,
             sleep_delay_sec: 20,
-            camera_poll_interval_sec: 5,
+            camera_poll_interval_sec: 1,
             night_blackout_enabled: true,
         }
     }
@@ -140,6 +140,11 @@ pub struct TriggerSnapshot {
     pub hub_open: bool,
     pub manual_launch: bool,
     pub prev_dark_room: bool,
+    /// True when the previous decision was AMOLED blackout. While true, the screen must NOT wake
+    /// up from the presence grace period (e.g. after a camera restart); a fresh positive signal
+    /// (light or a detected face) is required first.
+    #[serde(default)]
+    pub prev_blackout: bool,
 }
 
 impl Default for TriggerSnapshot {
@@ -158,6 +163,7 @@ impl Default for TriggerSnapshot {
             hub_open: false,
             manual_launch: false,
             prev_dark_room: false,
+            prev_blackout: false,
         }
     }
 }
@@ -328,6 +334,8 @@ pub fn evaluate_standby_state(rules: &TriggerRules, snap: &TriggerSnapshot) -> S
         .saturating_sub(snap.last_presence_epoch_ms);
     let sleep_grace_ms = (rules.sleep_delay_sec as u64) * 1000;
     let face_present_now = snap.face_detected.unwrap_or(false);
+    // While in blackout, the presence grace window is ignored: only a fresh positive signal wakes the screen.
+    let grace_active = !snap.prev_blackout && elapsed_no_presence_ms <= sleep_grace_ms;
 
     let presence_ok = if snap.hub_open {
         true
@@ -335,13 +343,9 @@ pub fn evaluate_standby_state(rules: &TriggerRules, snap: &TriggerSnapshot) -> S
         match rules.presence_mode {
             PresenceMode::Disabled => true,
             PresenceMode::LightOnly => !dark_room,
-            PresenceMode::FaceOnly => face_present_now || elapsed_no_presence_ms <= sleep_grace_ms,
-            PresenceMode::FaceOrLight => {
-                !dark_room || face_present_now || elapsed_no_presence_ms <= sleep_grace_ms
-            }
-            PresenceMode::FaceAndLight => {
-                !dark_room && (face_present_now || elapsed_no_presence_ms <= sleep_grace_ms)
-            }
+            PresenceMode::FaceOnly => face_present_now || grace_active,
+            PresenceMode::FaceOrLight => !dark_room || face_present_now || grace_active,
+            PresenceMode::FaceAndLight => !dark_room && (face_present_now || grace_active),
         }
     };
 

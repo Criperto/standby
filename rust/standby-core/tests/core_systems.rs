@@ -323,6 +323,30 @@ fn trigger_rules_and_presence_blackout() {
     let d5 = evaluate_standby_state(&rules, &snap);
     assert_eq!(d5.display_mode, DisplayMode::NightActive);
     assert!((d5.target_brightness - 0.6).abs() < 0.01);
+
+    // Camera restart while previously in blackout: grace window must NOT wake the screen
+    snap.hub_open = false;
+    snap.face_detected = None;
+    snap.now_epoch_ms = 100_000;
+    snap.last_presence_epoch_ms = 99_000; // looks like "recent presence" (fresh PresenceState)
+    snap.prev_blackout = false;
+    let d6 = evaluate_standby_state(&rules, &snap);
+    assert_eq!(d6.display_mode, DisplayMode::NightActive); // old behaviour: grace wakes it
+    snap.prev_blackout = true;
+    let d7 = evaluate_standby_state(&rules, &snap);
+    assert_eq!(d7.display_mode, DisplayMode::AmoledBlackout);
+    assert!(d7.should_poll_camera);
+
+    // A positive face verdict wakes it from blackout
+    snap.face_detected = Some(true);
+    let d8 = evaluate_standby_state(&rules, &snap);
+    assert_eq!(d8.display_mode, DisplayMode::NightActive);
+
+    // Light returning also wakes it
+    snap.face_detected = Some(false);
+    snap.ambient_lux = Some(80.0);
+    let d9 = evaluate_standby_state(&rules, &snap);
+    assert_ne!(d9.display_mode, DisplayMode::AmoledBlackout);
 }
 
 #[test]
