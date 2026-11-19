@@ -56,6 +56,7 @@ import com.criperto.standby.core.TriggerSnapshotDto
 import com.criperto.standby.renderer.CutoutDiskCache
 import com.criperto.standby.renderer.DepthMaskRuntimeData
 import com.criperto.standby.renderer.SceneRenderer
+import com.criperto.standby.smarthome.SmartHomeHubOverlay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import uniffi.standby_core.evaluateStandbyRulesJson
@@ -67,16 +68,20 @@ fun StandByHostScreen(
     window: Window?,
     manualLaunch: Boolean,
     onExitStandBy: () -> Unit,
-    onWizAction: (command: String, deviceId: String, arg: String?) -> Unit = { _, _, _ -> },
+    onWizAction: (command: String, deviceId: String, arg: String?) -> Unit = { cmd, dev, arg ->
+        app.smartHomeController.executeSceneWizAction(cmd, dev, arg)
+    },
     hubSlot: @Composable (
         remainingSec: Int,
         onDismiss: () -> Unit,
         onInteractionPing: () -> Unit,
         onExitStandBy: () -> Unit,
-    ) -> Unit = { remainingSec, onDismiss, _, onExit ->
-        DefaultTapToWakeCard(
+    ) -> Unit = { remainingSec, onDismiss, onInteractionPing, onExit ->
+        SmartHomeHubOverlay(
+            app = app,
             remainingSec = remainingSec,
             onDismiss = onDismiss,
+            onInteractionPing = onInteractionPing,
             onExitStandBy = onExit,
         )
     },
@@ -330,68 +335,6 @@ fun StandByHostScreen(
                             onExitStandBy,
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DefaultTapToWakeCard(
-    remainingSec: Int,
-    onDismiss: () -> Unit,
-    onExitStandBy: () -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .widthIn(max = 460.dp)
-            .padding(24.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Lightbulb,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = "Control Rápido (${remainingSec}s)",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, contentDescription = "Volver al reloj")
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Panel Tap-to-Wake listo. Los controles locales WiZ RGB se conectan en este panel.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-            ) {
-                OutlinedButton(onClick = onExitStandBy) {
-                    Text("Salir de StandBy")
-                }
-                Button(onClick = onDismiss) {
-                    Text("Volver al reloj")
                 }
             }
         }

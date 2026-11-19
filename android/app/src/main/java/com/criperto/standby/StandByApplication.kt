@@ -6,6 +6,8 @@ import com.criperto.standby.core.PresetRepository
 import com.criperto.standby.core.SettingsRepository
 import com.criperto.standby.renderer.SceneAssetCache
 import com.criperto.standby.renderer.ShaderRegistry
+import com.criperto.standby.smarthome.SmartHomeRepository
+import com.criperto.standby.smarthome.SmartHomeViewModel
 import com.criperto.standby.standby.StandByMonitorService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +22,10 @@ class StandByApplication : Application() {
     val presetRepository: PresetRepository by lazy { PresetRepository(this, settingsRepository) }
     val signalProvider: DeviceSignalProvider by lazy {
         DeviceSignalProvider(this, settingsRepository, presetRepository)
+    }
+    val smartHomeRepository: SmartHomeRepository by lazy { SmartHomeRepository(this) }
+    val smartHomeController: SmartHomeViewModel by lazy {
+        SmartHomeViewModel(this, smartHomeRepository, signalProvider)
     }
     val shaderRegistry: ShaderRegistry by lazy { ShaderRegistry(this) }
     val assetCache: SceneAssetCache by lazy { SceneAssetCache(this) }

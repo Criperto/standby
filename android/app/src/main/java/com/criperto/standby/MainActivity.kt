@@ -72,6 +72,7 @@ import com.criperto.standby.renderer.CutoutDiskCache
 import com.criperto.standby.renderer.DepthMaskRuntimeData
 import com.criperto.standby.renderer.SceneRenderer
 import com.criperto.standby.settings.SettingsScreen
+import com.criperto.standby.smarthome.SmartHomeScreen
 import com.criperto.standby.standby.StandByActivity
 import kotlinx.coroutines.launch
 import uniffi.standby_core.coreVersion
@@ -161,11 +162,7 @@ private fun MainShell(app: StandByApplication) {
                         app = app,
                         onOpenTab = { currentTab = it },
                     )
-                    AppTab.SMART_HOME -> PhasePlaceholderScreen(
-                        icon = Icons.Rounded.Lightbulb,
-                        title = "Control Local WiZ RGB",
-                        description = "Se activa en la Fase 3 con descubrimiento UDP, rueda HSV, Kelvin y 32 escenas.",
-                    )
+                    AppTab.SMART_HOME -> SmartHomeScreen(app = app)
                     AppTab.EDITOR -> PhasePlaceholderScreen(
                         icon = Icons.Rounded.AutoFixHigh,
                         title = "Editor de Escenas y Shaders",
