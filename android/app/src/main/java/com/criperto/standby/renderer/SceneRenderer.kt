@@ -76,6 +76,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
@@ -90,6 +91,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1041,40 +1043,24 @@ private fun RenderTextWidget(
         "justify" -> TextAlign.Justify
         else -> TextAlign.Center
     }
-    val shadowModifier = if (obj.shadowEnabled) {
-        Modifier.graphicsLayer {
-            shadowElevation = (obj.shadowBlur.toFloat() * 16f).coerceAtLeast(1f)
-        }
-    } else Modifier
+    val textShadow = if (obj.shadowEnabled) {
+        val sColor = if (obj.isCustomShadowColor) Color(parseHexColorInt(obj.customShadowHex))
+        else Color(resolvePaletteTokenInt(obj.shadowColorChoice, palette))
+        Shadow(
+            color = sColor.copy(alpha = obj.customShadowAlpha.toFloat().coerceIn(0f, 1f)),
+            offset = Offset(obj.shadowOffsetX.toFloat(), obj.shadowOffsetY.toFloat()),
+            blurRadius = (obj.shadowBlur.toFloat() * 28f).coerceAtLeast(1f),
+        )
+    } else null
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(shadowModifier),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = when (obj.textAlign) {
             "left" -> Alignment.CenterStart
             "right" -> Alignment.CenterEnd
             else -> Alignment.Center
         }
     ) {
-        if (obj.shadowEnabled) {
-            val sColor = if (obj.isCustomShadowColor) Color(parseHexColorInt(obj.customShadowHex))
-            else Color(resolvePaletteTokenInt(obj.shadowColorChoice, palette))
-            Text(
-                text = text,
-                color = sColor.copy(alpha = obj.customShadowAlpha.toFloat()),
-                fontSize = fontSizeSp,
-                letterSpacing = letterSpacingSp,
-                fontFamily = FontFamily(typeface),
-                fontWeight = FontWeight(obj.fontWeight.coerceIn(100, 900)),
-                fontStyle = if (obj.fontItalic) FontStyle.Italic else FontStyle.Normal,
-                textAlign = textAlign,
-                lineHeight = fontSizeSp * 0.96f,
-                modifier = Modifier.offset {
-                    IntOffset(obj.shadowOffsetX.roundToInt(), obj.shadowOffsetY.roundToInt())
-                },
-            )
-        }
         if (obj.strokeEnabled) {
             Text(
                 text = text,
@@ -1086,7 +1072,7 @@ private fun RenderTextWidget(
                 fontStyle = if (obj.fontItalic) FontStyle.Italic else FontStyle.Normal,
                 textAlign = textAlign,
                 lineHeight = fontSizeSp * 0.96f,
-                style = androidx.compose.ui.text.TextStyle(
+                style = TextStyle(
                     drawStyle = Stroke(
                         width = obj.strokeWidth.toFloat().coerceAtLeast(1f),
                         join = StrokeJoin.Round,
@@ -1104,6 +1090,7 @@ private fun RenderTextWidget(
             fontStyle = if (obj.fontItalic) FontStyle.Italic else FontStyle.Normal,
             textAlign = textAlign,
             lineHeight = fontSizeSp * 0.96f,
+            style = if (textShadow != null) TextStyle(shadow = textShadow) else TextStyle.Default,
         )
     }
 }
