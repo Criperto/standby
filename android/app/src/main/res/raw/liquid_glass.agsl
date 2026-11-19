@@ -1,0 +1,243 @@
+// Port faithful de CripertoShell liquid_glass.frag hacia Android AGSL (SkSL, API 33+)
+uniform shader src;
+uniform shader srcBlur;
+uniform shader maskSrc;
+uniform shader maskSoft;
+uniform shader tintSrc;
+
+uniform float shapeMode;       // 0 = rect analítico, 1 = maskSrc, 2 = círculo/arco, 3 = polígono, 4 = estrella
+uniform float rotationRad;     // rotación en radianes para alinear el espacio de pantalla
+uniform float bezel;           // ancho del borde que refracta, en px
+uniform float2 itemSize;       // tamaño del item en px
+uniform float2 screenSize;     // tamaño de la pantalla/backdrop en px
+uniform float2 centerPos;      // centro del item en coordenadas del backdrop (px)
+uniform float2 lightDir;       // dirección normalizada de la luz
+uniform float4 cornerRadii;    // TL, TR, BR, BL en px
+uniform float4 tintColor;      // RGBA [0..1]
+uniform float ior;             // índice de refracción (1.5)
+uniform float thickness;       // desplazamiento de refracción en px
+uniform float dispersion;      // dispersión cromática (0.06)
+uniform float frost;           // radio de blur en px
+uniform float saturation;      // 1.0 = neutro
+uniform float tintAmount;      // 0..1
+uniform float rim;             // intensidad del brillo especular de borde
+uniform float useTintGradient; // 1.0 = muestrear tintSrc, 0.0 = tintColor
+uniform float4 shapeParams;    // círculo(start, sweep, ratio, 0), poly(sides, radius, 0, 0), star(points, ratio, radius, 0)
+uniform float opacity;         // opacidad final del elemento [0..1]
+
+float2 rotateVec(float2 v, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return float2(v.x * c - v.y * s, v.x * s + v.y * c);
+}
+
+float sdRoundedBox4(float2 p, float2 b, float4 r) {
+    float rad = (p.x > 0.0) ? ((p.y > 0.0) ? r.z : r.y) : ((p.y > 0.0) ? r.w : r.x);
+    float2 q = abs(p) - b * 0.5 + rad;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - rad;
+}
+
+float sdCircleArc(float2 p, float2 size, float4 params) {
+    float2 r = max(float2(1.0), size * 0.5);
+    float2 q = p / r;
+    float rNorm = length(q);
+    float dOut = (rNorm - 1.0) * min(r.x, r.y);
+    float ratio = params.z;
+    float d = (ratio > 0.001) ? max(dOut, -(rNorm - ratio) * min(r.x, r.y)) : dOut;
+
+    float sweepDeg = params.y;
+    if (sweepDeg > 0.0 && sweepDeg < 359.99) {
+        float a = mod(atan(q.x, -q.y) * 57.2957795, 360.0);
+        float start = mod(params.x, 360.0);
+        float relA = mod(a - start + 360.0, 360.0);
+        if (relA > sweepDeg) {
+            float a1 = (params.x - 90.0) * 0.0174532925;
+            float a2 = (params.x - 90.0 + sweepDeg) * 0.0174532925;
+            float2 dir1 = float2(cos(a1), sin(a1));
+            float2 dir2 = float2(cos(a2), sin(a2));
+            float rIn = (ratio > 0.001) ? min(r.x, r.y) * ratio : 0.0;
+            float R = min(r.x, r.y);
+            float seg1 = length(p - dir1 * clamp(dot(p, dir1), rIn, R));
+            float seg2 = length(p - dir2 * clamp(dot(p, dir2), rIn, R));
+            d = min(seg1, seg2);
+        }
+    }
+    return d;
+}
+
+float sdRegularPolygon(float2 p, float2 size, float sides, float cornerRadius) {
+    float2 r = max(float2(1.0), size * 0.5);
+    float R = min(r.x, r.y);
+    float n = max(3.0, floor(sides + 0.5));
+    float an = 3.14159265 / n;
+    float2 acs = float2(cos(an), sin(an));
+    float a = atan(p.x, -p.y);
+    float aShifted = a + an;
+    float bn = mod(aShifted + an, 2.0 * an) - an;
+    float2 pw = length(p) * float2(cos(bn), abs(sin(bn)));
+    float cr = max(0.0, cornerRadius);
+    pw -= (R - cr) * acs;
+    pw.y += clamp(-pw.y, 0.0, (R - cr) * acs.y);
+    return length(pw) * sign(pw.x) - cr;
+}
+
+float sdStar(float2 p, float2 size, float points, float ratio, float cornerRadius) {
+    float2 r = max(float2(1.0), size * 0.5);
+    float R = min(r.x, r.y);
+    float n = max(3.0, floor(points + 0.5));
+    float rat = clamp(ratio, 0.05, 0.95);
+    float an = 3.14159265 / n;
+    float a = mod(atan(p.x, -p.y), 2.0 * an);
+    if (a > an) a = 2.0 * an - a;
+    float2 pw = length(p) * float2(sin(a), cos(a));
+    float2 A = float2(0.0, R);
+    float2 B = rat * R * float2(sin(an), cos(an));
+    float2 e = B - A;
+    float2 w = pw - A;
+    float2 pq = w - e * clamp(dot(w, e) / max(dot(e, e), 1e-5), 0.0, 1.0);
+    float s = -sign(w.x * e.y - w.y * e.x);
+    float cr = max(0.0, cornerRadius);
+    return length(pq) * s - cr;
+}
+
+float evalSdf(float2 p) {
+    if (shapeMode < 0.5) {
+        return sdRoundedBox4(p, itemSize, cornerRadii);
+    } else if (shapeMode > 1.5 && shapeMode < 2.5) {
+        return sdCircleArc(p, itemSize, shapeParams);
+    } else if (shapeMode > 2.5 && shapeMode < 3.5) {
+        return sdRegularPolygon(p, itemSize, shapeParams.x, shapeParams.y);
+    } else if (shapeMode > 3.5 && shapeMode < 4.5) {
+        return sdStar(p, itemSize, shapeParams.x, shapeParams.y, shapeParams.z);
+    }
+    return 0.0;
+}
+
+float3 tapBackdrop(float2 p, float blurBlend) {
+    float2 screenPos = clamp(centerPos + rotateVec(p, rotationRad), float2(0.5), max(screenSize - float2(0.5), float2(1.0)));
+    float3 sharp = src.eval(screenPos).rgb;
+    if (blurBlend <= 0.01) {
+        return sharp;
+    }
+    float3 blurred = srcBlur.eval(screenPos).rgb;
+    return mix(sharp, blurred, clamp(blurBlend, 0.0, 1.0));
+}
+
+float3 blurAt(float2 p, float2 fragCoord) {
+    if (frost <= 0.05) {
+        return tapBackdrop(p, 0.0);
+    }
+    float blurBlend = clamp(frost / 10.0, 0.0, 1.0);
+    float rot = fract(52.9829189 * fract(dot(fragCoord, float2(0.06711056, 0.00583715)))) * 6.2831853;
+    float R = max(frost, 0.2) * 1.35;
+    float3 acc = float3(0.0);
+    float ws = 0.0;
+    for (int i = 0; i < 16; ++i) {
+        float fi = float(i) + 0.5;
+        float r = sqrt(fi / 16.0);
+        float a = fi * 2.39996323 + rot;
+        float w = exp(-2.2 * r * r);
+        acc += tapBackdrop(p + float2(cos(a), sin(a)) * r * R, blurBlend) * w;
+        ws += w;
+    }
+    return acc / max(ws, 1e-4);
+}
+
+half4 main(float2 fragCoord) {
+    float2 p = fragCoord - itemSize * 0.5;
+    float d = 0.0;
+    float cov = 1.0;
+    float bz = max(bezel, 1.0) * 1.45;
+    float om = 0.0;
+    float3 n = float3(0.0, 0.0, 1.0);
+    float edge = 0.0;
+    float2 lDir = (length(lightDir) > 1e-4) ? normalize(lightDir) : float2(0.7071, -0.7071);
+
+    if (shapeMode < 0.5 || shapeMode > 1.5) {
+        d = evalSdf(p);
+        cov = clamp(0.5 - d, 0.0, 1.0);
+        if (cov <= 0.001) {
+            return half4(0.0);
+        }
+        float t = max(-d, 0.0);
+        om = 1.0 - clamp(t / bz, 0.0, 1.0);
+        float om4 = om * om * om * om;
+        float slope = min((om * om * om) / pow(max(1.0 - om4, 1e-3), 0.75), 7.0);
+        float2 e = float2(0.75, 0.0);
+        float2 g = float2(
+            evalSdf(p + e.xy) - evalSdf(p - e.xy),
+            evalSdf(p + e.yx) - evalSdf(p - e.yx)
+        );
+        g = (length(g) > 1e-4) ? normalize(g) : float2(0.0, -1.0);
+        n = normalize(float3(g * slope, 1.0));
+
+        float2 gScreen = rotateVec(g, rotationRad);
+        float facing = max(dot(gScreen, lDir), 0.0);
+        edge = exp(-t / 1.2) * (0.2 + 0.8 * facing) + exp(-t / 5.0) * 0.08;
+    } else {
+        float2 safeCoord = clamp(fragCoord, float2(0.5), max(itemSize - float2(0.5), float2(1.0)));
+        cov = float(maskSrc.eval(safeCoord).a);
+        if (cov <= 0.001) {
+            return half4(0.0);
+        }
+
+        float B = max(bezel, 2.0);
+        float r1 = B * 0.38;
+        float r2 = B * 0.82;
+        float2 grad = float2(0.0);
+        float sumOut = 0.0;
+        for (int k = 0; k < 8; ++k) {
+            float a1 = float(k) * 0.78539816;
+            float2 dir1 = float2(cos(a1), sin(a1));
+            float2 c1 = clamp(safeCoord + dir1 * r1, float2(0.5), max(itemSize - float2(0.5), float2(1.0)));
+            float s1 = 1.0 - float(maskSoft.eval(c1).a);
+            grad += dir1 * s1 * 0.65;
+            sumOut += s1 * 0.65;
+
+            float a2 = (float(k) + 0.5) * 0.78539816;
+            float2 dir2 = float2(cos(a2), sin(a2));
+            float2 c2 = clamp(safeCoord + dir2 * r2, float2(0.5), max(itemSize - float2(0.5), float2(1.0)));
+            float s2 = 1.0 - float(maskSoft.eval(c2).a);
+            grad += dir2 * s2 * 0.35;
+            sumOut += s2 * 0.35;
+        }
+
+        float2 gradNorm = grad / 8.0;
+        float gradLen = length(gradNorm);
+        om = clamp((sumOut / 8.0) * 2.0, 0.0, 1.0);
+        float2 nxy = gradNorm * 4.2 * (0.35 + 0.65 * om);
+        n = normalize(float3(nxy, 1.0));
+
+        float2 gSoft = gradNorm / max(gradLen, 0.12);
+        float2 gScreen = rotateVec(gSoft, rotationRad);
+        float facing = max(dot(gScreen, lDir), 0.0);
+        float ts = clamp((gradLen - 0.02) / 0.22, 0.0, 1.0);
+        float smoothG = ts * ts * (3.0 - 2.0 * ts);
+        float strokeEdge = smoothG * pow(om, 1.3);
+        edge = strokeEdge * (0.35 + 0.65 * facing) * 1.3;
+    }
+
+    float3 r = refract(float3(0.0, 0.0, -1.0), n, 1.0 / max(ior, 1.0));
+    float2 disp = r.xy / max(-r.z, 0.2) * thickness;
+
+    float3 col = blurAt(p + disp, fragCoord);
+    if (dot(disp, disp) > 0.25 && dispersion > 0.001) {
+        col.r = blurAt(p + disp * (1.0 + dispersion), fragCoord).r;
+        col.b = blurAt(p + disp * (1.0 - dispersion), fragCoord).b;
+    }
+
+    float l = dot(col, float3(0.2126, 0.7152, 0.0722));
+    col = mix(float3(l), col, saturation);
+    if (useTintGradient > 0.5) {
+        half4 gSample = tintSrc.eval(fragCoord);
+        float ga = float(gSample.a);
+        float3 gRgb = (ga > 0.001) ? clamp(float3(gSample.rgb) / ga, 0.0, 1.0) : float3(0.0);
+        col = mix(col, gRgb, tintAmount * clamp(ga, 0.0, 1.0));
+    } else {
+        col = mix(col, tintColor.rgb, tintAmount);
+    }
+    col += edge * rim;
+
+    float alpha = cov * opacity;
+    return half4(half3(clamp(col, 0.0, 1.0) * alpha), half(alpha));
+}

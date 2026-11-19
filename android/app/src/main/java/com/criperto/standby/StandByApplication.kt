@@ -1,5 +1,38 @@
 package com.criperto.standby
 
 import android.app.Application
+import com.criperto.standby.core.DeviceSignalProvider
+import com.criperto.standby.core.PresetRepository
+import com.criperto.standby.core.SettingsRepository
+import com.criperto.standby.renderer.SceneAssetCache
+import com.criperto.standby.renderer.ShaderRegistry
+import com.criperto.standby.standby.StandByMonitorService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
-class StandByApplication : Application()
+class StandByApplication : Application() {
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    val settingsRepository: SettingsRepository by lazy { SettingsRepository(this) }
+    val presetRepository: PresetRepository by lazy { PresetRepository(this, settingsRepository) }
+    val signalProvider: DeviceSignalProvider by lazy {
+        DeviceSignalProvider(this, settingsRepository, presetRepository)
+    }
+    val shaderRegistry: ShaderRegistry by lazy { ShaderRegistry(this) }
+    val assetCache: SceneAssetCache by lazy { SceneAssetCache(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        applicationScope.launch {
+            val initialSettings = runCatching { settingsRepository.settingsFlow.first() }.getOrNull()
+            val initialPreset = initialSettings?.activePresetName ?: "standby_split"
+            presetRepository.initialize(initialPreset)
+            if (initialSettings?.autoTriggerServiceEnabled == true) {
+                StandByMonitorService.syncState(this@StandByApplication, enabled = true)
+            }
+        }
+    }
+}

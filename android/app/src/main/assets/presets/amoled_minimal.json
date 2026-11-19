@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "name": "AMOLED Minimal",
+  "description": "Reloj minimalista sobre negro puro AMOLED con fecha y batería.",
+  "author": "StandBy",
+  "background": {
+    "mode": "black",
+    "brightness": 0.35,
+    "blurRadius": 0.0,
+    "nightDimFactor": 0.5
+  },
+  "state": {},
+  "meta": {
+    "targetAspect": "landscape"
+  },
+  "objects": [
+    {
+      "id": "clock_main",
+      "type": "clock",
+      "name": "Reloj Principal",
+      "alias": "reloj",
+      "zIndex": 1,
+      "visible": true,
+      "posX_ratio": 0.5,
+      "posY_ratio": 0.44,
+      "baseWidth": 640,
+      "baseHeight": 200,
+      "uniformScale": 1.0,
+      "baseFontSize": 148,
+      "fontWeight": 300,
+      "letterSpacing": -4,
+      "timeFormat": 0,
+      "textColorChoice": "white",
+      "fillAlpha": 0.96,
+      "textAlign": "center"
+    },
+    {
+      "id": "date_sub",
+      "type": "date",
+      "name": "Fecha",
+      "alias": "fecha",
+      "zIndex": 2,
+      "visible": true,
+      "posX_ratio": 0.5,
+      "posY_ratio": 0.68,
+      "baseWidth": 520,
+      "baseHeight": 46,
+      "baseFontSize": 26,
+      "fontWeight": 500,
+      "dateFormat": 0,
+      "textColorChoice": "primary",
+      "fillAlpha": 0.9,
+      "textAlign": "center"
+    },
+    {
+      "id": "battery_pill",
+      "type": "battery",
+      "name": "Batería",
+      "alias": "bateria",
+      "zIndex": 3,
+      "visible": true,
+      "posX_ratio": 0.5,
+      "posY_ratio": 0.80,
+      "baseWidth": 150,
+      "baseHeight": 38,
+      "textColorChoice": "onSurface",
+      "fillAlpha": 0.85,
+      "visibleCondition": "hasBattery"
+    }
+  ]
+}
