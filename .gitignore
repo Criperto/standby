@@ -1,6 +1,8 @@
 # Isolated build toolchain & local caches
 .toolchain/
-dist/*.apk
+dist/
+scripts/release.sh
+release.sh
 
 # Rust
 rust/target/
