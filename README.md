@@ -3,11 +3,27 @@
 > Reloj de escritorio Always-On Display (AOD) con Material You, editor profesional de escenas por capas, shaders AGSL (`liquid_glass`), motor nativo en Rust con expresiones y Regex, recorte de profundidad IA con ONNX y centro de control de Hogar Inteligente multi-marca local + Home Assistant para Android 12–15+.
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)
-![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-orange.svg)
+![Version: 0.5.0](https://img.shields.io/badge/version-0.5.0-orange.svg)
 ![Platform: Android 12–15+](https://img.shields.io/badge/platform-Android%2012--15%2B%20(arm64)-3DDC84.svg)
 ![Core: Rust + Compose M3](https://img.shields.io/badge/core-Rust%20%2B%20Jetpack%20Compose-purple.svg)
 
 Desarrollado por **Criperto** ([github.com/Criperto](https://github.com/Criperto)).
+
+---
+
+## 📸 Capturas de Pantalla
+
+### Modo StandBy y Menú Tap-to-Wake (Horizontal)
+
+| Modo StandBy AMOLED (`iphone_1_v2`) | Tap-to-Wake: Hogar Inteligente y Pomodoro |
+| :---: | :---: |
+| <img src="docs/screenshots/standby_aod.png" alt="Modo StandBy AMOLED con Material You" width="460" /> | <img src="docs/screenshots/smarthome_overlay.png" alt="Menú Tap-to-Wake Smart Home y Pomodoro con Amanecer WiZ" width="460" /> |
+
+### Interfaz Material You y Editor de Escenas (Vertical)
+
+| Inicio y Vista Previa | Hogar Inteligente (Multi-Marca & HA) | Editor con Shader `liquid_glass` |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/home_dashboard.png" alt="Pantalla de Inicio con estado del dispositivo y selector de presets" width="250" /> | <img src="docs/screenshots/smarthome_hub.png" alt="Panel de Hogar Inteligente Multi-Marca y Home Assistant" width="250" /> | <img src="docs/screenshots/editor_liquid_glass.png" alt="Editor de escenas con shader Liquid Glass y guías magnéticas" width="250" /> |
 
 ---
 
