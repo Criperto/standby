@@ -52,7 +52,7 @@ impl Default for BackgroundConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PresetMeta {
     #[serde(default)]
@@ -61,6 +61,29 @@ pub struct PresetMeta {
     pub target_aspect: Option<String>,
     #[serde(default)]
     pub created_by: Option<String>,
+    #[serde(default = "default_canvas_width")]
+    pub canvas_width: u32,
+    #[serde(default = "default_canvas_height")]
+    pub canvas_height: u32,
+}
+
+fn default_canvas_width() -> u32 {
+    2400
+}
+fn default_canvas_height() -> u32 {
+    1080
+}
+
+impl Default for PresetMeta {
+    fn default() -> Self {
+        Self {
+            motion_defaults: HashMap::new(),
+            target_aspect: Some("20:9".to_string()),
+            created_by: None,
+            canvas_width: default_canvas_width(),
+            canvas_height: default_canvas_height(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

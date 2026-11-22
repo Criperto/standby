@@ -1128,7 +1128,10 @@ fun HomeAssistantConnectDialog(
         onDismissRequest = onDismiss,
         title = { Text("Vincular Home Assistant Server") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
                     "Importa y controla automáticamente focos de cualquier marca (light.*), Smart TVs (media_player.*), Aires Acondicionados (climate.*), enchufes (switch.*) y ventiladores (fan.*).",
                     style = MaterialTheme.typography.bodySmall,

@@ -5,11 +5,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,7 +38,9 @@ import com.criperto.standby.editor.EditorViewModel
 import com.criperto.standby.renderer.CutoutDiskCache
 import com.criperto.standby.renderer.DepthMaskRuntimeData
 import com.criperto.standby.renderer.SceneRenderer
+import com.criperto.standby.renderer.rememberCanvasAspectRatio
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -48,6 +54,7 @@ fun EditorCanvas(
     val density = LocalDensity.current
     val liveSignals by app.signalProvider.signals.collectAsState()
     val effectiveSignals = if (uiState.simulatorEnabled) uiState.simulatorSignals else liveSignals
+    val canvasAspect = rememberCanvasAspectRatio(uiState.preset)
 
     var depthMask by remember { mutableStateOf<DepthMaskRuntimeData?>(null) }
     LaunchedEffect(
@@ -80,7 +87,7 @@ fun EditorCanvas(
     ) {
         BoxWithConstraints(
             modifier = Modifier
-                .aspectRatio(16f / 9f)
+                .aspectRatio(canvasAspect)
                 .graphicsLayer {
                     scaleX = uiState.zoom
                     scaleY = uiState.zoom
@@ -190,7 +197,58 @@ fun EditorCanvas(
                         )
                     }
                 },
+                onZoomPanGesture = { zoomChange, pan ->
+                    val nextZoom = (uiState.zoom * zoomChange).coerceIn(0.5f, 3.0f)
+                    viewModel.setZoomAndPan(
+                        zoom = nextZoom,
+                        panX = uiState.panX + pan.x * uiState.zoom,
+                        panY = uiState.panY + pan.y * uiState.zoom,
+                    )
+                },
             )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+            tonalElevation = 4.dp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            ) {
+                TextButton(
+                    onClick = {
+                        val next = (uiState.zoom - 0.25f).coerceIn(0.5f, 3.0f)
+                        viewModel.setZoomAndPan(
+                            zoom = next,
+                            panX = if (next <= 1.0f) 0f else uiState.panX,
+                            panY = if (next <= 1.0f) 0f else uiState.panY,
+                        )
+                    },
+                ) {
+                    Text("−", style = MaterialTheme.typography.titleMedium)
+                }
+                TextButton(
+                    onClick = { viewModel.resetViewport() },
+                ) {
+                    Text(
+                        "${(uiState.zoom * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        val next = (uiState.zoom + 0.25f).coerceIn(0.5f, 3.0f)
+                        viewModel.setZoomAndPan(next, uiState.panX, uiState.panY)
+                    },
+                ) {
+                    Text("+", style = MaterialTheme.typography.titleMedium)
+                }
+            }
         }
     }
 }

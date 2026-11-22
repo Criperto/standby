@@ -226,7 +226,7 @@ private fun TransformSection(
     InspectorSlider(
         label = "Ancho base: ${obj.baseWidth.roundToInt()} px",
         value = obj.baseWidth.toFloat(),
-        range = 24f..1920f,
+        range = 24f..2400f,
         onChange = { v ->
             viewModel.updateObjectDebounced(obj.id) {
                 it.copy(
@@ -925,7 +925,6 @@ private fun TextSection(
                 "\$TITLE",
                 "\$ARTIST",
                 "\$WEATHER_TEMP",
-                "\$TIMER_TEXT",
                 "\$NOTIF_COUNT",
                 "\$LAST_NOTIF",
                 "\${regexReplace(\$TITLE, \"(?i)\\\\s*\\\\(official.*\\\\)\", \"\")}",

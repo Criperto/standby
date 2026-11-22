@@ -1,6 +1,9 @@
 package com.criperto.standby.editor.canvas
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +66,7 @@ fun TransformGizmoOverlay(
     onSetPivot: (px: Double, py: Double) -> Unit,
     onUpdateShapeParam: (Double) -> Unit,
     onUpdateGradientEndpoint: (isP0: Boolean, normX: Double, normY: Double) -> Unit,
+    onZoomPanGesture: (zoomChange: Float, panChange: Offset) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -70,6 +74,7 @@ fun TransformGizmoOverlay(
     val curBox by rememberUpdatedState(worldBox)
     val curHitTest by rememberUpdatedState(onHitTestObjectAt)
     val curSelect by rememberUpdatedState(onSelectObject)
+    val curZoomPan by rememberUpdatedState(onZoomPanGesture)
 
     var activePart by remember { mutableStateOf(GizmoDragPart.NONE) }
 
@@ -148,6 +153,26 @@ fun TransformGizmoOverlay(
     Canvas(
         modifier = modifier
             .fillMaxSize()
+            .pointerInput(screenW, screenH) {
+                awaitEachGesture {
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        if (pressedCount >= 2) {
+                            if (activePart != GizmoDragPart.NONE) {
+                                onEndDrag()
+                                activePart = GizmoDragPart.NONE
+                            }
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            if (zoomChange != 1f || panChange != Offset.Zero) {
+                                curZoomPan(zoomChange, panChange)
+                            }
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
             .pointerInput(screenW, screenH) {
                 detectTapGestures { tapOffset ->
                     val hit = curHitTest(tapOffset)

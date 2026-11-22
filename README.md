@@ -3,7 +3,7 @@
 > Reloj de escritorio Always-On Display (AOD) con Material You, editor profesional de escenas por capas, shaders AGSL (`liquid_glass`), motor nativo en Rust con expresiones y Regex, recorte de profundidad IA con ONNX y centro de control de Hogar Inteligente multi-marca local + Home Assistant para Android 12–15+.
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)
-![Version: 0.5.0](https://img.shields.io/badge/version-0.5.0-orange.svg)
+![Version: 0.6.0](https://img.shields.io/badge/version-0.6.0-orange.svg)
 ![Platform: Android 12–15+](https://img.shields.io/badge/platform-Android%2012--15%2B%20(arm64)-3DDC84.svg)
 ![Core: Rust + Compose M3](https://img.shields.io/badge/core-Rust%20%2B%20Jetpack%20Compose-purple.svg)
 
@@ -15,15 +15,15 @@ Desarrollado por **Criperto** ([github.com/Criperto](https://github.com/Criperto
 
 ### Modo StandBy y Menú Tap-to-Wake (Horizontal)
 
-| Modo StandBy AMOLED (`iphone_1_v2`) | Tap-to-Wake: Hogar Inteligente y Pomodoro |
+| Modo StandBy AMOLED (`iphone_1_v2`) | Tap-to-Wake: Dispositivos Inteligentes |
 | :---: | :---: |
-| <img src="docs/screenshots/standby_aod.png" alt="Modo StandBy AMOLED con Material You" width="460" /> | <img src="docs/screenshots/smarthome_overlay.png" alt="Menú Tap-to-Wake Smart Home y Pomodoro con Amanecer WiZ" width="460" /> |
+| <img src="docs/screenshots/standby_aod.png" alt="Modo StandBy AMOLED con Material You" width="460" /> | <img src="docs/screenshots/smarthome_overlay.png" alt="Menú Tap-to-Wake de Dispositivos Inteligentes" width="460" /> |
 
 ### Interfaz Material You y Editor de Escenas (Vertical)
 
-| Inicio y Vista Previa | Hogar Inteligente (Multi-Marca & HA) | Editor con Shader `liquid_glass` |
+| Inicio y Vista Previa | Dispositivos (Multi-Marca & HA) | Editor con Shader `liquid_glass` |
 | :---: | :---: | :---: |
-| <img src="docs/screenshots/home_dashboard.png" alt="Pantalla de Inicio con estado del dispositivo y selector de presets" width="250" /> | <img src="docs/screenshots/smarthome_hub.png" alt="Panel de Hogar Inteligente Multi-Marca y Home Assistant" width="250" /> | <img src="docs/screenshots/editor_liquid_glass.png" alt="Editor de escenas con shader Liquid Glass y guías magnéticas" width="250" /> |
+| <img src="docs/screenshots/home_dashboard.png" alt="Pantalla de Inicio con estado del dispositivo y selector de presets" width="250" /> | <img src="docs/screenshots/smarthome_hub.png" alt="Panel de Dispositivos Multi-Marca y Home Assistant" width="250" /> | <img src="docs/screenshots/editor_liquid_glass.png" alt="Editor de escenas con shader Liquid Glass y guías magnéticas" width="250" /> |
 
 ---
 
@@ -32,8 +32,8 @@ Desarrollado por **Criperto** ([github.com/Criperto](https://github.com/Criperto
 - **Modo StandBy AMOLED & Salvapantallas (`DreamService` + Auto-Monitor):**
   - Activación automática al enchufar y colocar el teléfono en horizontal (con salida automática al ponerlo en vertical y reingreso al volver a horizontal).
   - Reglas configurables por fuente de carga (CA, USB, inalámbrica), ventanas horarias, días de la semana y exclusiones de calendario.
-  - Brillo de ventana independiente del brillo del sistema, modo nocturno automático con tinte cálido opcional y desplazamiento periódico anti-quemado OLED (*Pixel Shift*).
-  - **Presencia IA 24/7 Local:** Detección facial local con cámara + sensor de luz ambiental que apaga la pantalla a negro AMOLED `#000000` cuando la habitación está a oscuras sin nadie enfrente, y la despierta al detectar luz o rostro.
+  - Brillo de ventana independiente del brillo del sistema, **modo nocturno automático con opción de apagar la pantalla por horario**, **tinte rojo nocturno exclusivo sobre los elementos** (manteniendo el fondo `#000000` OLED negro puro) y desplazamiento periódico anti-quemado OLED (*Pixel Shift*).
+  - **Presencia IA 24/7 Local:** Detección facial local con cámara por muestreo periódico + sensor de luz ambiental que apaga la pantalla a negro AMOLED `#000000` cuando la habitación está a oscuras sin nadie enfrente, y la despierta al detectar luz o rostro.
 - **Tap-to-Wake Smart Home Hub (Multi-Marca Local + Home Assistant):**
   - Tocar la pantalla despierta un panel **Material You** (100% adaptado a los colores dinámicos del wallpaper del teléfono) con retorno automático al reloj tras inactividad.
   - **Control Estilo Google Home:** Tarjetas anchas donde **un toque alterna `ON ↔ OFF`** y **deslizar horizontalmente regula el `%`** (brillo en luces, temperatura `16°C–30°C` en aires acondicionados, volumen `%` en Smart TVs o velocidad en ventiladores) sin apuntar a botones pequeños.
@@ -43,8 +43,8 @@ Desarrollado por **Criperto** ([github.com/Criperto](https://github.com/Criperto
     - **Shelly (Gen1/Gen2) y Tasmota** por HTTP local.
     - **Yeelight / Xiaomi** por TCP local (`:55443`) y **Philips Hue Bridge**.
   - **Integración con Home Assistant Server:** Auto-descubrimiento en LAN (`homeassistant.local:8123` / escaneo `:8123`) o conexión por URL + Token para controlar **Luces de cualquier marca (`light.*`)**, **Aires Acondicionados (`climate.*`)**, **Smart TVs (`media_player.*`)**, **Enchufes (`switch.*`)** y **Ventiladores (`fan.*`)**.
-- **Editor Profesional de Escenas en el Teléfono:**
-  - Lienzo virtual `1920×1080` con zoom/paneo multitáctil, panel de herramientas colapsable (`< Lienzo` / `> Panel`) y vista previa 1:1 en vivo.
+- **Editor Profesional de Escenas en el Teléfono (Paridad 1:1 con Resolución Real):**
+  - Lienzo con resolución de referencia por preset (`2400×1080` `20:9` adaptable a la resolución física del teléfono), paridad visual 1:1 entre StandBy activo, vista previa y editor, zoom/paneo multitáctil con barra de zoom (`−`, `100%`, `+`) y panel colapsable (`< Lienzo` / `> Panel`).
   - **Sistema de Capas, Grupos y Auto-Layout:** Árbol jerárquico con orden Z, bloqueo, visibilidad, agrupación y auto-layout (`Fila`, `Columna`, `Grilla 2×2`, `Radial`).
   - **Gizmo Táctil y Pivote Inteligente:** Manipuladores de posición, escala por esquinas/lados, rotación con snap a `15°`, vectores de gradiente y **pivote interactivo con conservación de posición visual**.
   - **Guías Magnéticas (`Smart Guides`):** Autoalineación a centros, bordes, tercios y espaciado equidistante entre objetos con respuesta háptica.

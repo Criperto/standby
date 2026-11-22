@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -72,6 +73,7 @@ import com.criperto.standby.editor.EditorScreen
 import com.criperto.standby.renderer.CutoutDiskCache
 import com.criperto.standby.renderer.DepthMaskRuntimeData
 import com.criperto.standby.renderer.SceneRenderer
+import com.criperto.standby.renderer.rememberCanvasAspectRatio
 import com.criperto.standby.settings.SettingsScreen
 import com.criperto.standby.smarthome.SmartHomeScreen
 import com.criperto.standby.standby.StandByActivity
@@ -81,7 +83,7 @@ import kotlin.math.roundToInt
 
 enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Inicio", Icons.Rounded.Home),
-    SMART_HOME("Hogar WiZ", Icons.Rounded.Lightbulb),
+    SMART_HOME("Dispositivos", Icons.Rounded.Lightbulb),
     EDITOR("Editor", Icons.Rounded.Edit),
     SETTINGS("Ajustes", Icons.Rounded.Settings),
 }
@@ -214,6 +216,8 @@ private fun HomeDashboardScreen(
     val activePreset by app.presetRepository.activePresetFlow.collectAsState()
     val signals by app.signalProvider.signals.collectAsState()
     val rustVersion = remember { coreVersion() }
+    val canvasAspect = rememberCanvasAspectRatio(activePreset)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     DisposableEffect(Unit) {
         app.signalProvider.acquireRenderConsumer()
@@ -264,13 +268,19 @@ private fun HomeDashboardScreen(
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Vista previa: ${activePreset.name}",
+                    "Vista previa (${activePreset.meta.canvasWidth}×${activePreset.meta.canvasHeight}): ${activePreset.name}",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
+                        .then(
+                            if (isLandscape) {
+                                Modifier.heightIn(max = 210.dp).aspectRatio(canvasAspect)
+                            } else {
+                                Modifier.fillMaxWidth().aspectRatio(canvasAspect)
+                            }
+                        )
+                        .align(Alignment.CenterHorizontally)
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color.Black),
                 ) {
@@ -352,7 +362,7 @@ private fun HomeDashboardScreen(
                     OutlinedButton(onClick = { onOpenTab(AppTab.SMART_HOME) }) {
                         Icon(Icons.Rounded.Lightbulb, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Lámparas WiZ")
+                        Text("Dispositivos")
                     }
                 }
             }

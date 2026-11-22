@@ -144,6 +144,54 @@ data class ComputedWorldBox(
 )
 
 @Composable
+fun rememberCanvasAspectRatio(preset: StandByPreset): Float {
+    val context = LocalContext.current
+    return remember(preset.meta.canvasWidth, preset.meta.canvasHeight) {
+        val cw = preset.meta.canvasWidth
+        val ch = preset.meta.canvasHeight
+        if (cw > 100 && ch > 100) {
+            (cw.toFloat() / ch.toFloat()).coerceIn(1.33f, 2.5f)
+        } else {
+            val dm = context.resources.displayMetrics
+            val w = maxOf(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(1280f)
+            val h = minOf(dm.widthPixels, dm.heightPixels).toFloat().coerceAtLeast(720f)
+            (w / h).coerceIn(1.33f, 2.5f)
+        }
+    }
+}
+
+fun tintColorToNightRed(color: Color): Color {
+    val lum = (0.299f * color.red + 0.587f * color.green + 0.114f * color.blue).coerceIn(0f, 1f)
+    val r = if (lum < 0.08f) lum * 2.2f else (0.38f + lum * 0.62f).coerceIn(0f, 1f)
+    return Color(
+        red = r,
+        green = (lum * 0.06f).coerceIn(0f, 0.10f),
+        blue = (lum * 0.04f).coerceIn(0f, 0.08f),
+        alpha = color.alpha,
+    )
+}
+
+fun MaterialYouPaletteDto.toNightRedPalette(): MaterialYouPaletteDto = MaterialYouPaletteDto(
+    primary = 0xFFFF3B30,
+    onPrimary = 0xFF280200,
+    primaryContainer = 0xFF4A0A07,
+    onPrimaryContainer = 0xFFFF8A80,
+    secondary = 0xFFD9382E,
+    onSecondary = 0xFF240200,
+    secondaryContainer = 0xFF380705,
+    tertiary = 0xFFFF5247,
+    tertiaryContainer = 0xFF420906,
+    surface = 0xFF140202,
+    surfaceVariant = 0xFF240404,
+    surfaceContainer = 0xFF1C0303,
+    onSurface = 0xFFFF453A,
+    onSurfaceVariant = 0xFFC83228,
+    background = 0xFF000000,
+    outline = 0xFF5C100C,
+    error = 0xFFFF3B30,
+)
+
+@Composable
 fun SceneRenderer(
     preset: StandByPreset,
     signals: DeviceSignals,
@@ -152,12 +200,18 @@ fun SceneRenderer(
     modifier: Modifier = Modifier,
     depthMask: DepthMaskRuntimeData? = null,
     interactive: Boolean = true,
+    nightRedTint: Boolean = false,
     onEmptyTap: () -> Unit = {},
     onWizAction: (command: String, deviceId: String, arg: String?) -> Unit = { _, _, _ -> },
     overrideObjects: List<SceneObject>? = null,
 ) {
-    val palette = MaterialTheme.colorScheme.toPaletteDto()
+    val rawPalette = MaterialTheme.colorScheme.toPaletteDto()
+    val palette = remember(rawPalette, nightRedTint) {
+        if (nightRedTint) rawPalette.toNightRedPalette() else rawPalette
+    }
     val density = LocalDensity.current
+    val refW = preset.meta.canvasWidth.takeIf { it > 100 }?.toFloat() ?: SCENE_REF_W
+    val refH = preset.meta.canvasHeight.takeIf { it > 100 }?.toFloat() ?: SCENE_REF_H
     val stateValues = remember(preset.name, preset.objects.size) {
         mutableStateMapOf<String, Double>().apply {
             for ((k, v) in preset.state) put("@|$k", v)
@@ -220,7 +274,7 @@ fun SceneRenderer(
                     } else Modifier
                 )
         ) {
-            if (preset.background.mode == "black") {
+            if (preset.background.mode == "black" || nightRedTint) {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             } else {
                 Image(
@@ -293,7 +347,7 @@ fun SceneRenderer(
             if (obj.visibleCondition.isNotBlank() && !evalExpressionCondition(obj.visibleCondition, ctxJson)) {
                 continue
             }
-            val wb = computeWorldBox(obj, byId, sw, sh, signals, ctxJson)
+            val wb = computeWorldBox(obj, byId, sw, sh, signals, ctxJson, refW, refH)
             if (!wb.effectiveVisible || wb.effectiveOpacity <= 0.005f) continue
 
             val targetedByWpMask = activeWpMask != null && (
@@ -328,6 +382,9 @@ fun SceneRenderer(
                 allObjects = objects,
                 sw = sw,
                 sh = sh,
+                refW = refW,
+                refH = refH,
+                nightRedTint = nightRedTint,
                 signals = signals,
                 stateValues = stateValues,
                 scopeAncestors = scopeAncestors,
@@ -342,7 +399,7 @@ fun SceneRenderer(
         }
 
         // 2. Foreground AI Subject Cutout (when wallpaper_mask + depthMask available)
-        if (depthMask != null && activeWpMask != null) {
+        if (depthMask != null && activeWpMask != null && !nightRedTint) {
             Image(
                 bitmap = depthMask.cutoutBitmap.asImageBitmap(),
                 contentDescription = null,
@@ -359,6 +416,9 @@ fun SceneRenderer(
                 allObjects = objects,
                 sw = sw,
                 sh = sh,
+                refW = refW,
+                refH = refH,
+                nightRedTint = nightRedTint,
                 signals = signals,
                 stateValues = stateValues,
                 scopeAncestors = scopeAncestors,
@@ -472,11 +532,16 @@ private fun evalNum(obj: SceneObject, prop: String, base: Double, ctxBaseJson: S
     return evalExpressionNumeric(expr, prop, json)
 }
 
-const val SCENE_REF_W = 1920f
+const val SCENE_REF_W = 2400f
 const val SCENE_REF_H = 1080f
 
-fun computeViewportScale(sw: Float, sh: Float): Float {
-    return kotlin.math.min(sw / SCENE_REF_W, sh / SCENE_REF_H).coerceAtLeast(0.1f)
+fun computeViewportScale(
+    sw: Float,
+    sh: Float,
+    refW: Float = SCENE_REF_W,
+    refH: Float = SCENE_REF_H,
+): Float {
+    return kotlin.math.min(sw / refW.coerceAtLeast(320f), sh / refH.coerceAtLeast(240f)).coerceAtLeast(0.1f)
 }
 
 fun computeWorldBox(
@@ -486,8 +551,10 @@ fun computeWorldBox(
     sh: Float,
     signals: DeviceSignals,
     ctxJson: String,
+    refW: Float = SCENE_REF_W,
+    refH: Float = SCENE_REF_H,
 ): ComputedWorldBox {
-    val vScale = computeViewportScale(sw, sh)
+    val vScale = computeViewportScale(sw, sh, refW, refH)
     var effVisible = obj.visible
     var effOpacity = evalExpressionOr(obj.expressions["elementOpacity"], "elementOpacity", obj.elementOpacity, ctxJson)
     var gx = 0f
@@ -587,6 +654,9 @@ private fun RenderObjectNode(
     allObjects: List<SceneObject>,
     sw: Float,
     sh: Float,
+    refW: Float,
+    refH: Float,
+    nightRedTint: Boolean,
     signals: DeviceSignals,
     stateValues: MutableMap<String, Double>,
     scopeAncestors: Map<String, String>,
@@ -612,7 +682,7 @@ private fun RenderObjectNode(
             palette = palette,
         )
     }
-    val wb = computeWorldBox(obj, byId, sw, sh, signals, ctxJson)
+    val wb = computeWorldBox(obj, byId, sw, sh, signals, ctxJson, refW, refH)
     val baseFillArgb = if (obj.isCustomColor) {
         parseHexColorInt(obj.customHex)
     } else {
@@ -626,7 +696,8 @@ private fun RenderObjectNode(
     }
     val fillAlpha = evalExpressionOr(obj.expressions["fillAlpha"], "fillAlpha", obj.fillAlpha, ctxJson)
         .toFloat().coerceIn(0f, 1f)
-    val fillColor = Color(resolvedFillArgb).copy(alpha = Color(resolvedFillArgb).alpha * fillAlpha)
+    val rawFillColor = Color(resolvedFillArgb).copy(alpha = Color(resolvedFillArgb).alpha * fillAlpha)
+    val fillColor = if (nightRedTint) tintColorToNightRed(rawFillColor) else rawFillColor
 
     val strokeBaseArgb = if (obj.isCustomStrokeColor) {
         parseHexColorInt(obj.customStrokeHex)
@@ -639,6 +710,7 @@ private fun RenderObjectNode(
     } else {
         strokeBaseArgb
     }
+    val effectiveStrokeColor = if (nightRedTint) tintColorToNightRed(Color(strokeArgb)) else Color(strokeArgb)
 
     val widthDp = with(density) { wb.width.toDp() }
     val heightDp = with(density) { wb.height.toDp() }
@@ -709,7 +781,7 @@ private fun RenderObjectNode(
                 } else Modifier
             )
     ) {
-        val vScale = computeViewportScale(sw, sh)
+        val vScale = computeViewportScale(sw, sh, refW, refH)
         when (obj.objType) {
             "clock", "clock_hours", "clock_minutes", "clock_seconds", "clock_separator", "clock_ampm",
             "clock_h1", "clock_h2", "clock_m1", "clock_m2", "clock_s1", "clock_s2",
@@ -739,7 +811,7 @@ private fun RenderObjectNode(
                     letterSpacingPx = letterSp,
                     typeface = typeface,
                     fillColor = fillColor,
-                    strokeColor = Color(strokeArgb),
+                    strokeColor = effectiveStrokeColor,
                     palette = palette,
                     wb = wb,
                     backdrop = backdrop,
@@ -761,7 +833,7 @@ private fun RenderObjectNode(
                     obj = scaledObj,
                     wb = wb,
                     fillColor = fillColor,
-                    strokeColor = Color(strokeArgb),
+                    strokeColor = effectiveStrokeColor,
                     palette = palette,
                     backdrop = backdrop,
                     shaderRegistry = shaderRegistry,
@@ -827,7 +899,8 @@ private fun RenderObjectNode(
                     assetCache = assetCache,
                     vScale = vScale,
                     textColor = fillColor,
-                    strokeColor = Color(strokeArgb),
+                    strokeColor = effectiveStrokeColor,
+                    nightRedTint = nightRedTint,
                     wb = wb,
                     interactive = interactive,
                     onWizAction = onWizAction,
@@ -847,7 +920,7 @@ private fun RenderObjectNode(
                         scopeAncestors = scopeAncestors,
                         palette = palette,
                     )
-                    val mBox = computeWorldBox(maskObj, byId, sw, sh, signals, mCtx)
+                    val mBox = computeWorldBox(maskObj, byId, sw, sh, signals, mCtx, refW, refH)
                     val mPath = ShapePathBuilder.buildShapePath(maskObj, mBox.width, mBox.height, 0f)
                     val relLeft = (mBox.centerX - mBox.width * 0.5f) - (wb.centerX - wb.width * 0.5f)
                     val relTop = (mBox.centerY - mBox.height * 0.5f) - (wb.centerY - wb.height * 0.5f)
@@ -1425,6 +1498,7 @@ private fun RenderWizButtonWidget(
     vScale: Float,
     textColor: Color,
     strokeColor: Color,
+    nightRedTint: Boolean,
     wb: ComputedWorldBox,
     interactive: Boolean,
     onWizAction: (String, String, String?) -> Unit,
@@ -1452,7 +1526,8 @@ private fun RenderWizButtonWidget(
     } else {
         resolvePaletteTokenInt(obj.wizBgColorChoice, palette)
     }
-    val baseBg = Color(bgArgb).copy(alpha = (Color(bgArgb).alpha * obj.wizBgAlpha.toFloat()).coerceIn(0f, 1f))
+    val rawBaseBg = Color(bgArgb).copy(alpha = (Color(bgArgb).alpha * obj.wizBgAlpha.toFloat()).coerceIn(0f, 1f))
+    val baseBg = if (nightRedTint) tintColorToNightRed(rawBaseBg).copy(alpha = (rawBaseBg.alpha * 0.45f).coerceIn(0.12f, 0.55f)) else rawBaseBg
 
     val barArgb = if (obj.wizIsCustomBarColor) {
         parseHexColorInt(obj.wizCustomBarHex)
@@ -1460,7 +1535,7 @@ private fun RenderWizButtonWidget(
         resolvePaletteTokenInt(obj.wizBarColorChoice, palette)
     }
     val rawBarColor = Color(barArgb).copy(alpha = (Color(barArgb).alpha * obj.wizBarAlpha.toFloat()).coerceIn(0f, 1f))
-    val fillTint = if (w.isOn) {
+    val rawFillTint = if (w.isOn) {
         if (obj.wizUseLampColor) {
             androidx.compose.ui.graphics.lerp(rawBarColor, lampColor, 0.38f)
         } else {
@@ -1469,13 +1544,15 @@ private fun RenderWizButtonWidget(
     } else {
         baseBg
     }
+    val fillTint = if (nightRedTint) tintColorToNightRed(rawFillTint) else rawFillTint
 
     val accArgb = if (obj.wizIsCustomAccentColor) {
         parseHexColorInt(obj.wizCustomAccentHex)
     } else {
         resolvePaletteTokenInt(obj.wizAccentColorChoice, palette)
     }
-    val pctColor = if (w.isOn) Color(accArgb) else textColor.copy(alpha = 0.55f)
+    val rawPctColor = if (w.isOn) Color(accArgb) else textColor.copy(alpha = 0.55f)
+    val pctColor = if (nightRedTint) tintColorToNightRed(rawPctColor) else rawPctColor
 
     val fillFrac = if (w.isOn) (w.dimming.coerceIn(10, 100) / 100f) else 0f
     val cornerPx = (obj.radiusUniform.toFloat() * vScale).coerceIn(0f, wb.height * 0.5f)

@@ -34,6 +34,7 @@ data class AppSettings(
     val nightStartMin: Int = 23 * 60,
     val nightEndMin: Int = 7 * 60,
     val nightRedTintEnabled: Boolean = false,
+    val nightScheduledBlackout: Boolean = false,
     val useSystemBrightness: Boolean = false,
     val standbyBrightness: Float = 0.28f,
     val nightBrightness: Float = 0.06f,
@@ -88,6 +89,7 @@ data class AppSettings(
             sleepDelaySec = sleepDelaySec,
             cameraPollIntervalSec = cameraPollIntervalSec,
             nightBlackoutEnabled = nightBlackoutEnabled,
+            nightScheduledBlackout = nightScheduledBlackout,
         )
     }
 }
@@ -111,6 +113,7 @@ class SettingsRepository(private val context: Context) {
         val NIGHT_START = intPreferencesKey("night_start")
         val NIGHT_END = intPreferencesKey("night_end")
         val NIGHT_RED_TINT = booleanPreferencesKey("night_red_tint")
+        val NIGHT_SCHEDULED_BLACKOUT = booleanPreferencesKey("night_scheduled_blackout")
         val USE_SYSTEM_BRIGHTNESS = booleanPreferencesKey("use_system_brightness")
         val STANDBY_BRIGHTNESS = floatPreferencesKey("standby_brightness")
         val NIGHT_BRIGHTNESS = floatPreferencesKey("night_brightness")
@@ -160,6 +163,7 @@ class SettingsRepository(private val context: Context) {
             nightStartMin = p[Keys.NIGHT_START] ?: (23 * 60),
             nightEndMin = p[Keys.NIGHT_END] ?: (7 * 60),
             nightRedTintEnabled = p[Keys.NIGHT_RED_TINT] ?: false,
+            nightScheduledBlackout = p[Keys.NIGHT_SCHEDULED_BLACKOUT] ?: false,
             useSystemBrightness = p[Keys.USE_SYSTEM_BRIGHTNESS] ?: false,
             standbyBrightness = p[Keys.STANDBY_BRIGHTNESS] ?: 0.28f,
             nightBrightness = p[Keys.NIGHT_BRIGHTNESS] ?: 0.06f,
@@ -204,6 +208,7 @@ class SettingsRepository(private val context: Context) {
                 nightStartMin = prefs[Keys.NIGHT_START] ?: (23 * 60),
                 nightEndMin = prefs[Keys.NIGHT_END] ?: (7 * 60),
                 nightRedTintEnabled = prefs[Keys.NIGHT_RED_TINT] ?: false,
+                nightScheduledBlackout = prefs[Keys.NIGHT_SCHEDULED_BLACKOUT] ?: false,
                 useSystemBrightness = prefs[Keys.USE_SYSTEM_BRIGHTNESS] ?: false,
                 standbyBrightness = prefs[Keys.STANDBY_BRIGHTNESS] ?: 0.28f,
                 nightBrightness = prefs[Keys.NIGHT_BRIGHTNESS] ?: 0.06f,
@@ -242,6 +247,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.NIGHT_START] = next.nightStartMin
             prefs[Keys.NIGHT_END] = next.nightEndMin
             prefs[Keys.NIGHT_RED_TINT] = next.nightRedTintEnabled
+            prefs[Keys.NIGHT_SCHEDULED_BLACKOUT] = next.nightScheduledBlackout
             prefs[Keys.USE_SYSTEM_BRIGHTNESS] = next.useSystemBrightness
             prefs[Keys.STANDBY_BRIGHTNESS] = next.standbyBrightness.coerceIn(0.01f, 1.0f)
             prefs[Keys.NIGHT_BRIGHTNESS] = next.nightBrightness.coerceIn(0.01f, 1.0f)

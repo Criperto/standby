@@ -200,6 +200,13 @@ pub fn effective_object_dimensions(obj: &SceneObject) -> (f64, f64) {
     ((bw * sx).max(16.0), (bh * sy).max(16.0))
 }
 
+pub const REF_CANVAS_W: f64 = 2400.0;
+pub const REF_CANVAS_H: f64 = 1080.0;
+
+pub fn compute_viewport_scale(sw: f64, sh: f64) -> f64 {
+    (sw / REF_CANVAS_W).min(sh / REF_CANVAS_H).max(0.1)
+}
+
 fn round_if_static(val: f64, is_animating: bool) -> f64 {
     if is_animating {
         val
@@ -218,13 +225,14 @@ pub fn get_group_world_pos(
 ) -> (f64, f64, f64, f64, f64) {
     let sw = if screen_w > 0.0 { screen_w } else { 2400.0 };
     let sh = if screen_h > 0.0 { screen_h } else { 1080.0 };
+    let v_scale = compute_viewport_scale(sw, sh);
     if depth < 64 {
         if let Some(pid) = grp.group_id.as_deref().filter(|s| !s.is_empty()) {
             if let Some(parent) = by_id.get(pid) {
                 let (px, py, prot, psx, psy) =
                     get_group_world_pos(parent, by_id, sw, sh, is_animating, depth + 1);
-                let off_x = grp.group_offset_x * psx;
-                let off_y = grp.group_offset_y * psy;
+                let off_x = grp.group_offset_x * psx * v_scale;
+                let off_y = grp.group_offset_y * psy * v_scale;
                 let rad = prot.to_radians();
                 let rx = off_x * rad.cos() - off_y * rad.sin();
                 let ry = off_x * rad.sin() + off_y * rad.cos();
@@ -253,24 +261,29 @@ pub fn get_object_world_transform(
 ) -> WorldTransform {
     let sw = if screen_w > 0.0 { screen_w } else { 2400.0 };
     let sh = if screen_h > 0.0 { screen_h } else { 1080.0 };
+    let v_scale = compute_viewport_scale(sw, sh);
     let by_id: HashMap<&str, &SceneObject> =
         objects.iter().map(|o| (o.id.as_str(), o)).collect();
 
-    let (base_w, base_h) = effective_object_dimensions(obj);
+    let (raw_w, raw_h) = effective_object_dimensions(obj);
+    let base_w = (raw_w * v_scale).max(16.0);
+    let base_h = (raw_h * v_scale).max(16.0);
 
     if obj.obj_type == "group" {
         let (gx, gy, grot, gsx, gsy) =
             get_group_world_pos(obj, &by_id, sw, sh, is_animating, 0);
-        let gw = if obj.group_width > 0.0 {
+        let gw = (if obj.group_width > 0.0 {
             obj.group_width
         } else {
             200.0
-        } * gsx;
-        let gh = if obj.group_height > 0.0 {
+        } * v_scale * gsx)
+            .max(20.0);
+        let gh = (if obj.group_height > 0.0 {
             obj.group_height
         } else {
             200.0
-        } * gsy;
+        } * v_scale * gsy)
+            .max(20.0);
         let vc = anchor_to_visual_center(gx, gy, obj.pivot_x, obj.pivot_y, gw, gh, grot);
         return WorldTransform {
             anchor_x: gx,
@@ -289,8 +302,8 @@ pub fn get_object_world_transform(
         if let Some(grp) = by_id.get(gid) {
             let (gx, gy, grot, gsx, gsy) =
                 get_group_world_pos(grp, &by_id, sw, sh, is_animating, 0);
-            let off_x = obj.group_offset_x * gsx;
-            let off_y = obj.group_offset_y * gsy;
+            let off_x = obj.group_offset_x * gsx * v_scale;
+            let off_y = obj.group_offset_y * gsy * v_scale;
             let rad = grot.to_radians();
             let rx = off_x * rad.cos() - off_y * rad.sin();
             let ry = off_x * rad.sin() + off_y * rad.cos();
@@ -349,6 +362,7 @@ pub fn set_pivot_keep_visual_position(
 ) {
     let sw = if screen_w > 0.0 { screen_w } else { 2400.0 };
     let sh = if screen_h > 0.0 { screen_h } else { 1080.0 };
+    let v_scale = compute_viewport_scale(sw, sh);
 
     let wt = get_object_world_transform(obj, objects, sw, sh, true);
     let old_px = obj.pivot_x;
@@ -375,8 +389,8 @@ pub fn set_pivot_keep_visual_position(
             let unrot_dy = -dw_x * grad.sin() + dw_y * grad.cos();
             let sx_safe = if gsx.abs() > 1e-4 { gsx } else { 1.0 };
             let sy_safe = if gsy.abs() > 1e-4 { gsy } else { 1.0 };
-            obj.group_offset_x += unrot_dx / sx_safe;
-            obj.group_offset_y += unrot_dy / sy_safe;
+            obj.group_offset_x += unrot_dx / (sx_safe * v_scale);
+            obj.group_offset_y += unrot_dy / (sy_safe * v_scale);
         }
     }
 

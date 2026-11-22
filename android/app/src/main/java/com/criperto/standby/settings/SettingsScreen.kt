@@ -343,8 +343,14 @@ fun SettingsScreen(
                         onValueChange = { v -> updateSettings { it.copy(nightEndMin = roundTo5(v)) } },
                     )
                     SettingSwitchRow(
+                        title = "Apagar pantalla en horario nocturno",
+                        subtitle = "Apaga la pantalla a negro total durante la noche sin usar cámara IA (tocar la enciende temporalmente)",
+                        checked = settings.nightScheduledBlackout,
+                        onCheckedChange = { c -> updateSettings { it.copy(nightScheduledBlackout = c) } },
+                    )
+                    SettingSwitchRow(
                         title = "Tinte rojo nocturno",
-                        subtitle = "Velo cálido tenue para reducir luz azul",
+                        subtitle = "Tiñe solo el reloj y widgets en rojo profundo manteniendo el fondo negro OLED (#000000)",
                         checked = settings.nightRedTintEnabled,
                         onCheckedChange = { c -> updateSettings { it.copy(nightRedTintEnabled = c) } },
                     )
@@ -578,11 +584,11 @@ fun SettingsScreen(
                 icon = Icons.Rounded.Layers,
             ) {
                 Text(
-                    text = "StandBy — Android Desktop Clock & Local Smart Home Hub (Rust + Jetpack Compose M3)",
+                    text = "StandBy: Android Desktop Clock & Local Smart Home Hub (Rust + Jetpack Compose M3)",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
-                    text = "Autor: Criperto · Versión 0.5.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
+                    text = "Autor: Criperto · Versión 0.6.0 · Licencia: GNU GPL v3.0 or later (GPL-3.0-or-later)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

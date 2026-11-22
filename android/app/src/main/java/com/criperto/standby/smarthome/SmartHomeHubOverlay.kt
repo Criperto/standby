@@ -66,7 +66,6 @@ fun SmartHomeHubOverlay(
 
     var editingDeviceId by remember { mutableStateOf<String?>(null) }
     var showAddIp by remember { mutableStateOf(false) }
-    var wizSunrise by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         controller.refreshAllStates()
@@ -104,7 +103,7 @@ fun SmartHomeHubOverlay(
                     )
                     Column {
                         Text(
-                            text = "%02d:%02d · Hogar Inteligente".format(signals.hour, signals.minute),
+                            text = "%02d:%02d · Dispositivos".format(signals.hour, signals.minute),
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
@@ -181,7 +180,7 @@ fun SmartHomeHubOverlay(
                 }
             }
 
-            // Temporizador / Pomodoro con Amanecer WiZ + Cambio rápido de Preset
+            // Cambio rápido de Preset
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -194,64 +193,15 @@ fun SmartHomeHubOverlay(
                         onInteractionPing()
                         scope.launch { app.presetRepository.cycleActivePreset(-1) }
                     },
-                    label = { Text("‹ Preset") },
+                    label = { Text("‹ Preset anterior") },
                 )
                 AssistChip(
                     onClick = {
                         onInteractionPing()
                         scope.launch { app.presetRepository.cycleActivePreset(1) }
                     },
-                    label = { Text("$activePresetId ›") },
+                    label = { Text("Preset ($activePresetId) ›") },
                 )
-                if (signals.timer.isActive) {
-                    AssistChip(
-                        onClick = {
-                            onInteractionPing()
-                            MediaBridge.cancelTimer()
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        },
-                        label = { Text("${signals.timer.label} · ${signals.timer.formattedRemaining} (Cancelar)") },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-                        ),
-                    )
-                } else {
-                    listOf(
-                        5 to "⏱ 5m",
-                        15 to "⏱ 15m",
-                        25 to "🍅 25m Pomodoro",
-                        45 to "⏱ 45m",
-                    ).forEach { (mins, label) ->
-                        AssistChip(
-                            onClick = {
-                                onInteractionPing()
-                                MediaBridge.startTimer(
-                                    minutes = mins,
-                                    label = if (mins == 25) "Pomodoro" else "${mins}m",
-                                    wizSunriseEnabled = wizSunrise,
-                                    onSunriseStep = { bri ->
-                                        val primaryId = ui.devices.firstOrNull()?.id ?: return@startTimer
-                                        controller.setTempKelvin(primaryId, 3000, bri)
-                                    },
-                                )
-                            },
-                            label = { Text(label) },
-                        )
-                    }
-                    FilterChip(
-                        selected = wizSunrise,
-                        onClick = {
-                            onInteractionPing()
-                            wizSunrise = !wizSunrise
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.WbSunny, contentDescription = null)
-                        },
-                        label = { Text("Amanecer WiZ") },
-                    )
-                }
             }
 
             if (ui.devices.isEmpty()) {
@@ -263,7 +213,7 @@ fun SmartHomeHubOverlay(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "Aún no hay lámparas WiZ guardadas.",
+                        "Aún no hay dispositivos guardados.",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

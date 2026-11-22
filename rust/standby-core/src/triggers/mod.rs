@@ -95,6 +95,8 @@ pub struct TriggerRules {
     pub sleep_delay_sec: u32,
     pub camera_poll_interval_sec: u32,
     pub night_blackout_enabled: bool,
+    #[serde(default)]
+    pub night_scheduled_blackout: bool,
 }
 
 impl Default for TriggerRules {
@@ -120,6 +122,7 @@ impl Default for TriggerRules {
             sleep_delay_sec: 20,
             camera_poll_interval_sec: 1,
             night_blackout_enabled: true,
+            night_scheduled_blackout: false,
         }
     }
 }
@@ -336,6 +339,22 @@ pub fn evaluate_standby_state(rules: &TriggerRules, snap: &TriggerSnapshot) -> S
     let face_present_now = snap.face_detected.unwrap_or(false);
     // While in blackout, the presence grace window is ignored: only a fresh positive signal wakes the screen.
     let grace_active = !snap.prev_blackout && elapsed_no_presence_ms <= sleep_grace_ms;
+
+    if is_night_window && rules.night_scheduled_blackout && !snap.hub_open && !grace_active {
+        return StandByDecision {
+            should_be_active: true,
+            display_mode: DisplayMode::AmoledBlackout,
+            should_poll_camera,
+            target_brightness: if rules.use_system_brightness {
+                -1.0
+            } else {
+                0.01
+            },
+            extra_dim_alpha: 1.0,
+            is_dark_room: dark_room,
+            reason: "Pantalla apagada por horario nocturno".into(),
+        };
+    }
 
     let presence_ok = if snap.hub_open {
         true

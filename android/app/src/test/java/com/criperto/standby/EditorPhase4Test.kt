@@ -106,18 +106,18 @@ class EditorPhase4Test {
             pivotY = 0.0,
             rotation = 0.0,
         )
-        // Reference 1920x1080 -> vScale = 1.0
-        val boxRef = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 1920.0, 1080.0)
-        assertEquals(960.0, boxRef.anchorX, 0.01)
+        // Reference 2400x1080 -> vScale = 1.0
+        val boxRef = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 2400.0, 1080.0)
+        assertEquals(1200.0, boxRef.anchorX, 0.01)
         assertEquals(540.0, boxRef.anchorY, 0.01)
-        assertEquals(1060.0, boxRef.visualCenterX, 0.01)
+        assertEquals(1300.0, boxRef.visualCenterX, 0.01)
         assertEquals(590.0, boxRef.visualCenterY, 0.01)
 
-        // Half resolution 960x540 -> vScale = 0.5 -> width=100, height=50
-        val boxHalf = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 960.0, 540.0)
-        assertEquals(480.0, boxHalf.anchorX, 0.01)
+        // Half resolution 1200x540 -> vScale = 0.5 -> width=100, height=50
+        val boxHalf = SceneObjectOps.computePureVisualBox(obj, listOf(obj), 1200.0, 540.0)
+        assertEquals(600.0, boxHalf.anchorX, 0.01)
         assertEquals(270.0, boxHalf.anchorY, 0.01)
-        assertEquals(530.0, boxHalf.visualCenterX, 0.01)
+        assertEquals(650.0, boxHalf.visualCenterX, 0.01)
         assertEquals(295.0, boxHalf.visualCenterY, 0.01)
     }
 }

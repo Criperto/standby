@@ -440,25 +440,62 @@ object SceneObjectOps {
         objects: List<SceneObject>,
         screenW: Double,
         screenH: Double,
+        refW: Double = 2400.0,
+        refH: Double = 1080.0,
     ): WorldTransformDto {
-        val vScale = min(screenW / 1920.0, screenH / 1080.0).coerceAtLeast(0.1)
-        val w = (obj.baseWidth * vScale * obj.scaleX * obj.uniformScale).coerceAtLeast(16.0)
-        val h = (obj.baseHeight * vScale * obj.scaleY * obj.uniformScale).coerceAtLeast(16.0)
-        val parent = obj.groupId?.let { gid -> objects.firstOrNull { it.id == gid } }
+        val vScale = min(screenW / refW.coerceAtLeast(320.0), screenH / refH.coerceAtLeast(240.0)).coerceAtLeast(0.1)
+        val byId = objects.associateBy { it.id }
+
+        var gx = 0.0
+        var gy = 0.0
+        var gRot = 0.0
+        var gSx = 1.0
+        var gSy = 1.0
+
+        if (obj.groupId != null) {
+            val chain = mutableListOf<SceneObject>()
+            var curId = obj.groupId
+            var guard = 0
+            while (curId != null && guard++ < 64) {
+                val g = byId[curId] ?: break
+                chain.add(g)
+                curId = g.groupId
+            }
+            chain.reverse()
+            for ((idx, grp) in chain.withIndex()) {
+                val gsX = grp.scaleX * grp.uniformScale
+                val gsY = grp.scaleY * grp.uniformScale
+                if (idx == 0) {
+                    gx = grp.posXRatio * screenW
+                    gy = grp.posYRatio * screenH
+                } else {
+                    val ox = grp.groupOffsetX * gSx * vScale
+                    val oy = grp.groupOffsetY * gSy * vScale
+                    val rad = Math.toRadians(gRot)
+                    gx += ox * cos(rad) - oy * sin(rad)
+                    gy += ox * sin(rad) + oy * cos(rad)
+                }
+                gRot += grp.rotation
+                gSx *= gsX
+                gSy *= gsY
+            }
+        }
+
+        val rawW = if (obj.objType == "group" && obj.groupWidth > 0.0) obj.groupWidth else obj.baseWidth
+        val rawH = if (obj.objType == "group" && obj.groupHeight > 0.0) obj.groupHeight else obj.baseHeight
+        val w = (rawW * vScale * obj.scaleX * obj.uniformScale * gSx).coerceAtLeast(16.0)
+        val h = (rawH * vScale * obj.scaleY * obj.uniformScale * gSy).coerceAtLeast(16.0)
+
         val anchorX: Double
         val anchorY: Double
         val rotDeg: Double
-        if (parent != null) {
-            val px = parent.posXRatio * screenW
-            val py = parent.posYRatio * screenH
-            val rad = Math.toRadians(parent.rotation)
-            val ox = obj.groupOffsetX * vScale * parent.scaleX * parent.uniformScale
-            val oy = obj.groupOffsetY * vScale * parent.scaleY * parent.uniformScale
-            val rx = ox * cos(rad) - oy * sin(rad)
-            val ry = ox * sin(rad) + oy * cos(rad)
-            anchorX = px + rx
-            anchorY = py + ry
-            rotDeg = parent.rotation + obj.rotation
+        if (obj.groupId != null && byId.containsKey(obj.groupId)) {
+            val ox = obj.groupOffsetX * gSx * vScale
+            val oy = obj.groupOffsetY * gSy * vScale
+            val rad = Math.toRadians(gRot)
+            anchorX = gx + (ox * cos(rad) - oy * sin(rad))
+            anchorY = gy + (ox * sin(rad) + oy * cos(rad))
+            rotDeg = gRot + obj.rotation
         } else {
             anchorX = obj.posXRatio * screenW
             anchorY = obj.posYRatio * screenH
@@ -475,8 +512,8 @@ object SceneObjectOps {
             visualCenterX = vcx,
             visualCenterY = vcy,
             rotationDeg = rotDeg,
-            scaleX = obj.scaleX * obj.uniformScale,
-            scaleY = obj.scaleY * obj.uniformScale,
+            scaleX = obj.scaleX * obj.uniformScale * gSx,
+            scaleY = obj.scaleY * obj.uniformScale * gSy,
             width = w,
             height = h,
         )
@@ -909,13 +946,16 @@ class EditorViewModel(private val app: StandByApplication) {
         val finalCy = snap?.y ?: rawCy
         val effDx = finalCx - world.visualCenterX
         val effDy = finalCy - world.visualCenterY
+        val refW = cur.preset.meta.canvasWidth.takeIf { it > 100 }?.toDouble() ?: 2400.0
+        val refH = cur.preset.meta.canvasHeight.takeIf { it > 100 }?.toDouble() ?: 1080.0
+        val vScale = min(sw / refW, sh / refH).coerceAtLeast(0.1)
 
         val nextObjs = cur.preset.objects.map { obj ->
             if (obj.id in cur.selectedIds && !obj.locked) {
                 if (obj.groupId != null && obj.groupId !in cur.selectedIds) {
                     obj.copy(
-                        groupOffsetX = obj.groupOffsetX + effDx,
-                        groupOffsetY = obj.groupOffsetY + effDy,
+                        groupOffsetX = obj.groupOffsetX + (effDx / vScale),
+                        groupOffsetY = obj.groupOffsetY + (effDy / vScale),
                     )
                 } else {
                     obj.copy(
@@ -1122,7 +1162,10 @@ class EditorViewModel(private val app: StandByApplication) {
         screenW: Double,
         screenH: Double,
     ): WorldTransformDto {
-        return SceneObjectOps.computePureVisualBox(obj, objects, screenW, screenH)
+        val meta = _uiState.value.preset.meta
+        val refW = meta.canvasWidth.takeIf { it > 100 }?.toDouble() ?: 2400.0
+        val refH = meta.canvasHeight.takeIf { it > 100 }?.toDouble() ?: 1080.0
+        return SceneObjectOps.computePureVisualBox(obj, objects, screenW, screenH, refW, refH)
     }
 
     fun validateExpression(expr: String): String? {

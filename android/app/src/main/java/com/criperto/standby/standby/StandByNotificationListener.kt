@@ -41,12 +41,29 @@ object MediaBridge {
     @Volatile
     private var activeController: MediaController? = null
 
+    @Volatile
+    private var currentBannerKey: String? = null
+    private val shownPostTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     fun isNotificationAccessGranted(context: Context): Boolean {
         val enabled = Settings.Secure.getString(
             context.contentResolver,
             "enabled_notification_listeners"
         ) ?: return false
         return enabled.contains(context.packageName)
+    }
+
+    fun dismissNotificationBanner() {
+        val prev = _notificationState.value
+        if (prev.lastTitle.isNotEmpty() || prev.lastText.isNotEmpty() || prev.lastPostedEpochMs != 0L) {
+            _notificationState.value = prev.copy(
+                lastTitle = "",
+                lastText = "",
+                lastPackage = "",
+                lastPostedEpochMs = 0L,
+            )
+        }
+        currentBannerKey = null
     }
 
     fun startTimer(
@@ -109,7 +126,10 @@ object MediaBridge {
                 (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0
         }.orEmpty()
 
-        val prev = _notificationState.value
+        val activeKeys = relevant.map { it.key }.toSet()
+        shownPostTimes.keys.retainAll(activeKeys)
+
+        val now = System.currentTimeMillis()
         if (newlyPosted != null &&
             !newlyPosted.isOngoing &&
             newlyPosted.packageName != "com.criperto.standby" &&
@@ -117,21 +137,40 @@ object MediaBridge {
             newlyPosted.packageName != "com.android.systemui" &&
             (newlyPosted.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0
         ) {
-            val extras = newlyPosted.notification.extras
-            val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-            val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
-            if (title.isNotEmpty() || text.isNotEmpty()) {
-                _notificationState.value = NotificationSnapshot(
-                    activeCount = relevant.size.coerceAtLeast(1),
-                    lastTitle = title,
-                    lastText = text,
-                    lastPackage = newlyPosted.packageName.substringAfterLast('.'),
-                    lastPostedEpochMs = System.currentTimeMillis(),
-                )
-                return
+            val isFresh = (now - newlyPosted.postTime) in -5_000L..15_000L
+            val previousShownTime = shownPostTimes.put(newlyPosted.key, newlyPosted.postTime)
+            if (isFresh && previousShownTime != newlyPosted.postTime) {
+                val extras = newlyPosted.notification.extras
+                val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+                val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
+                if (title.isNotEmpty() || text.isNotEmpty()) {
+                    currentBannerKey = newlyPosted.key
+                    _notificationState.value = NotificationSnapshot(
+                        activeCount = relevant.size.coerceAtLeast(1),
+                        lastTitle = title,
+                        lastText = text,
+                        lastPackage = newlyPosted.packageName.substringAfterLast('.'),
+                        lastPostedEpochMs = now,
+                    )
+                    return
+                }
             }
         }
-        if (prev.activeCount != relevant.size) {
+
+        val prev = _notificationState.value
+        val bannerRemoved = relevant.isEmpty() || (currentBannerKey != null && currentBannerKey !in activeKeys)
+        if (bannerRemoved) {
+            currentBannerKey = null
+            if (prev.activeCount != relevant.size || prev.lastTitle.isNotEmpty() || prev.lastPostedEpochMs != 0L) {
+                _notificationState.value = NotificationSnapshot(
+                    activeCount = relevant.size,
+                    lastTitle = "",
+                    lastText = "",
+                    lastPackage = "",
+                    lastPostedEpochMs = 0L,
+                )
+            }
+        } else if (prev.activeCount != relevant.size) {
             _notificationState.value = prev.copy(activeCount = relevant.size)
         }
     }

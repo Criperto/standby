@@ -42,11 +42,18 @@ class PresetRepository(
         "composite_2x2.json",
     )
 
+    fun deviceLandscapeCanvasSize(): Pair<Int, Int> {
+        val dm = context.resources.displayMetrics
+        val w = maxOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1280)
+        val h = minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(720)
+        return w to h
+    }
+
     suspend fun initialize(initialActiveId: String) = withContext(Dispatchers.IO) {
-        val migratedToV3 = seedBuiltinsIfMissing()
+        val migratedToV4 = seedBuiltinsIfMissing()
         refreshList()
         val chosen = when {
-            migratedToV3 -> "iphone_1_v2"
+            migratedToV4 && presetFile(initialActiveId).exists() -> initialActiveId
             presetFile(initialActiveId).exists() -> initialActiveId
             else -> "iphone_1_v2"
         }
@@ -54,7 +61,7 @@ class PresetRepository(
     }
 
     private fun seedBuiltinsIfMissing(): Boolean {
-        val marker = File(presetsDir, ".builtin_seed_v3")
+        val marker = File(presetsDir, ".builtin_seed_v4")
         val forceRefreshBuiltins = !marker.exists()
         for (fileName in builtinFiles) {
             val dst = File(presetsDir, fileName)
@@ -67,7 +74,7 @@ class PresetRepository(
             }
         }
         if (forceRefreshBuiltins) {
-            runCatching { marker.writeText("v3") }
+            runCatching { marker.writeText("v4") }
         }
         return forceRefreshBuiltins
     }
@@ -134,7 +141,15 @@ class PresetRepository(
 
     suspend fun savePreset(id: String, preset: StandByPreset, activate: Boolean = true): ValidationReport =
         withContext(Dispatchers.IO) {
-            val encoded = AppJson.encodeToString(preset)
+            val (devW, devH) = deviceLandscapeCanvasSize()
+            val normalizedPreset = preset.copy(
+                meta = preset.meta.copy(
+                    canvasWidth = if (preset.meta.canvasWidth > 0) preset.meta.canvasWidth else devW,
+                    canvasHeight = if (preset.meta.canvasHeight > 0) preset.meta.canvasHeight else devH,
+                    targetAspect = preset.meta.targetAspect ?: "${devW}:${devH}",
+                )
+            )
+            val encoded = AppJson.encodeToString(normalizedPreset)
             val report = AppJson.decodeFromString<ValidationReport>(validatePresetJson(encoded))
             val outJson = report.sanitizedJson.ifBlank { encoded }
             val dst = presetFile(id)

@@ -119,10 +119,15 @@ fun StandByHostScreen(
     }
 
     var showNotifBanner by remember { mutableStateOf(false) }
-    LaunchedEffect(signals.notifications.lastPostedEpochMs) {
-        if (signals.notifications.lastPostedEpochMs > 0L && signals.notifications.lastTitle.isNotBlank()) {
+    LaunchedEffect(signals.notifications.lastPostedEpochMs, signals.notifications.lastTitle) {
+        val postedAt = signals.notifications.lastPostedEpochMs
+        val ageMs = System.currentTimeMillis() - postedAt
+        if (postedAt > 0L && ageMs in 0L..8_000L && signals.notifications.lastTitle.isNotBlank()) {
             showNotifBanner = true
-            delay(8_000L)
+            delay((8_000L - ageMs).coerceIn(1_000L, 8_000L))
+            showNotifBanner = false
+            MediaBridge.dismissNotificationBanner()
+        } else {
             showNotifBanner = false
         }
     }
@@ -326,6 +331,11 @@ fun StandByHostScreen(
                         detectTapGestures(
                             onTap = {
                                 presenceController.markTouchPresence()
+                                decision = decision.copy(
+                                    displayMode = "night_active",
+                                    targetBrightness = settings.nightBrightness,
+                                    extraDimAlpha = 0.5f,
+                                )
                             },
                             onLongPress = {
                                 onExitStandBy()
@@ -334,6 +344,7 @@ fun StandByHostScreen(
                     },
             )
         } else {
+            val nightRedTintActive = decision.displayMode == "night_active" && settings.nightRedTintEnabled
             SceneRenderer(
                 preset = preset,
                 signals = signals,
@@ -349,6 +360,7 @@ fun StandByHostScreen(
                     },
                 depthMask = depthMask,
                 interactive = !hubOpen,
+                nightRedTint = nightRedTintActive,
                 onEmptyTap = {
                     presenceController.markTouchPresence()
                     if (settings.tapToWakeEnabled) {
@@ -358,14 +370,6 @@ fun StandByHostScreen(
                 },
                 onWizAction = onWizAction,
             )
-
-            if (decision.displayMode == "night_active" && settings.nightRedTintEnabled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0x40990000)),
-                )
-            }
 
             if (decision.extraDimAlpha > 0.005f) {
                 Box(
@@ -388,7 +392,7 @@ fun StandByHostScreen(
                     },
             )
 
-            // Top floating pill for Active Timer / Pomodoro or Live Notification Banner
+            // Top floating pill for Live Notification Banner
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -396,35 +400,6 @@ fun StandByHostScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                AnimatedVisibility(visible = signals.timer.isActive, enter = fadeIn(), exit = fadeOut()) {
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f),
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text(
-                                text = "${signals.timer.label} · ${signals.timer.formattedRemaining}",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = "✕",
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { MediaBridge.cancelTimer() }
-                                    .padding(horizontal = 4.dp),
-                            )
-                        }
-                    }
-                }
-
                 AnimatedVisibility(
                     visible = showNotifBanner && !hubOpen && signals.notifications.lastTitle.isNotBlank(),
                     enter = fadeIn(),
@@ -432,11 +407,22 @@ fun StandByHostScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(22.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        color = if (nightRedTintActive) {
+                            Color(0xE6220404)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f)
+                        },
+                        contentColor = if (nightRedTintActive) {
+                            Color(0xFFFF3B30)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                         modifier = Modifier
                             .widthIn(max = 520.dp)
-                            .clickable { showNotifBanner = false },
+                            .clickable {
+                                showNotifBanner = false
+                                MediaBridge.dismissNotificationBanner()
+                            },
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

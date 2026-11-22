@@ -347,6 +347,21 @@ fn trigger_rules_and_presence_blackout() {
     snap.ambient_lux = Some(80.0);
     let d9 = evaluate_standby_state(&rules, &snap);
     assert_ne!(d9.display_mode, DisplayMode::AmoledBlackout);
+
+    // Scheduled night screen blackout (without AI camera) turns off screen during night window
+    rules.presence_mode = PresenceMode::Disabled;
+    rules.night_scheduled_blackout = true;
+    snap.prev_blackout = true;
+    let d10 = evaluate_standby_state(&rules, &snap);
+    assert_eq!(d10.display_mode, DisplayMode::AmoledBlackout);
+    assert!(!d10.should_poll_camera);
+
+    // Touch wake during scheduled night blackout temporarily wakes screen for sleep_delay_sec
+    snap.prev_blackout = false;
+    snap.now_epoch_ms = 200_000;
+    snap.last_presence_epoch_ms = 195_000;
+    let d11 = evaluate_standby_state(&rules, &snap);
+    assert_eq!(d11.display_mode, DisplayMode::NightActive);
 }
 
 #[test]

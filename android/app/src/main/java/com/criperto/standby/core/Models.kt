@@ -25,8 +25,10 @@ data class BackgroundConfig(
 @Serializable
 data class PresetMeta(
     val motionDefaults: Map<String, String> = emptyMap(),
-    val targetAspect: String? = null,
+    val targetAspect: String? = "20:9",
     val createdBy: String? = null,
+    val canvasWidth: Int = 2400,
+    val canvasHeight: Int = 1080,
 )
 
 @Serializable
@@ -293,6 +295,7 @@ data class TriggerRulesDto(
     val sleepDelaySec: Int = 20,
     val cameraPollIntervalSec: Int = 1,
     val nightBlackoutEnabled: Boolean = true,
+    val nightScheduledBlackout: Boolean = false,
 )
 
 @Serializable
